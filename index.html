@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>JARVIS</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<meta name="theme-color" content="#0a0e17">
+<style>
+:root {
+    --bg: #0a0e17;
+    --panel: #111827;
+    --panel2: #0d1117;
+    --cyan: #00d4ff;
+    --cyan-dim: #00d4ff55;
+    --cyan-faint: #00d4ff22;
+    --text: #d7e2ec;
+    --dim: #7a8ba0;
+    --green: #26a69a;
+    --red: #ef5350;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { height: 100%; }
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    overflow: hidden;
+    height: 100dvh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+#header {
+    padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--cyan-faint);
+    background: var(--panel2);
+    flex: none;
+}
+#header .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+    animation: pulse 2.2s infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+#header h1 {
+    font-family: 'Courier New', monospace;
+    font-size: 17px; letter-spacing: 4px;
+    color: var(--cyan); font-weight: bold;
+}
+#header .sub { margin-left: auto; font-size: 11px; color: var(--dim); font-family: 'Courier New', monospace; }
+.page { position: absolute; top: 0; bottom: 0; left: 0; right: 0; display: none; flex-direction: column; }
+.page.active { display: flex; }
+#pages { flex: 1; position: relative; min-height: 0; }
+.scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
+#faceCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .18; z-index: 0; }
+#chatLog, #chatBar { position: relative; z-index: 1; }
+#chatLog { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px 6px; }
+.msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
+.msg.user { background: var(--cyan-faint); border: 1px solid var(--cyan-dim); margin-left: auto; border-bottom-right-radius: 3px; }
+.msg.jarvis { background: var(--panel); border: 1px solid #1e2a3a; border-bottom-left-radius: 3px; }
+.msg.jarvis b { color: var(--cyan); }
+.msg.thinking { color: var(--dim); font-style: italic; }
+#chatBar {
+    display: flex; gap: 8px; padding: 8px 12px;
+    background: var(--panel2); border-top: 1px solid var(--cyan-faint);
+}
+#chatInput {
+    flex: 1; background: var(--panel); color: var(--text);
+    border: 1px solid #1e2a3a; border-radius: 20px;
+    padding: 10px 14px; font-size: 16px; outline: none;
+}
+#chatInput:focus { border-color: var(--cyan-dim); }
+#sendBtn {
+    background: var(--cyan); color: #04121a; border: none;
+    border-radius: 20px; padding: 0 18px; font-weight: bold; font-size: 15px;
+}
+#sendBtn:disabled { opacity: .4; }
+.card {
+    background: var(--panel); border: 1px solid #1e2a3a;
+    border-radius: 12px; padding: 14px; margin-bottom: 12px;
+}
+.card h2 {
+    font-family: 'Courier New', monospace; font-size: 12px;
+    letter-spacing: 2px; color: var(--cyan); margin-bottom: 10px; font-weight: bold;
+}
+.big { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pnl { font-size: 16px; font-weight: 600; margin-top: 2px; }
+.up { color: var(--green); } .down { color: var(--red); }
+.dimtxt { color: var(--dim); font-size: 12px; margin-top: 4px; }
+canvas { width: 100%; height: 90px; }
+.trow { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #16202e; font-size: 13px; }
+.trow:last-child { border-bottom: none; }
+.trow .d { color: var(--dim); width: 58px; flex-shrink: 0; font-family: 'Courier New', monospace; }
+.chips { display: flex; gap: 3px; flex-wrap: wrap; flex: 1; }
+.chip { width: 16px; height: 16px; border-radius: 4px; font-size: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+.chip.W { background: #26a69a33; color: var(--green); border: 1px solid #26a69a66; }
+.chip.L { background: #ef535033; color: var(--red); border: 1px solid #ef535066; }
+.chip.B { background: #7a8ba033; color: var(--dim); border: 1px solid #7a8ba066; }
+.trow .p { font-weight: 600; font-variant-numeric: tabular-nums; }
+.alert { border-color: var(--cyan-dim); }
+.alert .t { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.alert .s { color: var(--dim); font-size: 12px; margin-top: 6px; }
+#briefBody { font-size: 14px; line-height: 1.55; }
+#briefBody h1, #briefBody h2 { font-family: 'Courier New', monospace; color: var(--cyan); font-size: 13px; letter-spacing: 1px; margin: 14px 0 6px; }
+#briefBody h1:first-child { margin-top: 0; }
+#briefBody li { margin-left: 18px; margin-bottom: 4px; }
+#tabs {
+    flex: none;
+    display: flex;
+    background: var(--panel2); border-top: 1px solid var(--cyan-faint);
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+    flex: 1; text-align: center; padding: 10px 0 8px;
+    color: var(--dim); font-size: 11px; font-family: 'Courier New', monospace; letter-spacing: 1px;
+}
+.tab .ico { font-size: 19px; display: block; margin-bottom: 2px; }
+.tab.active { color: var(--cyan); }
+.offline { text-align: center; color: var(--dim); font-size: 12px; padding: 8px; display: none; }
+</style>
+</head>
+<body>
+
+<div id="header">
+    <div class="dot" id="headerDot"></div>
+    <h1 id="headerTitle">J.A.R.V.I.S</h1>
+    <div class="sub" id="clock"></div>
+</div>
+
+<div id="pages">
+    <div class="page active" id="page-chat">
+        <canvas id="faceCanvas"></canvas>
+        <div id="chatLog">
+            <div class="msg jarvis" id="greeting">Good day, sir. Away-mode link active.</div>
+        </div>
+        <form id="chatBar" action="#">
+            <input id="chatInput" type="text" placeholder="Ask JARVIS..." autocomplete="off" enterkeyhint="send">
+            <button id="sendBtn" type="submit">➤</button>
+        </form>
+    </div>
+
+    <div class="page" id="page-markets">
+        <div class="scroll">
+            <div class="offline" id="mOffline"></div>
+            <div class="card" id="card-portfolio">
+                <h2>PORTFOLIO</h2>
+                <div class="big" id="equity">—</div>
+                <div class="pnl" id="dayPnl"></div>
+                <div class="dimtxt" id="asOf"></div>
+                <canvas id="spark" height="90"></canvas>
+            </div>
+            <div class="card" id="card-tally">
+                <h2>TRADE TALLY</h2>
+                <div id="tally"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page" id="page-brief">
+        <div class="scroll">
+            <div class="offline" id="bOffline"></div>
+            <div class="card alert" id="alertCard" style="display:none">
+                <h2>⚡ BREAKING</h2>
+                <div class="t" id="alertTitle"></div>
+                <div class="s" id="alertMeta"></div>
+            </div>
+            <div class="card" id="card-brief">
+                <h2>LATEST BRIEF</h2>
+                <div class="dimtxt" id="briefWhen" style="margin:0 0 8px"></div>
+                <div id="briefBody">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="tabs">
+    <div class="tab active" data-page="chat"><span class="ico">◈</span>CHAT</div>
+    <div class="tab" data-page="markets"><span class="ico">▲</span>MARKETS</div>
+    <div class="tab" data-page="brief"><span class="ico">☰</span>BRIEF</div>
+</div>
+
+<script>
+// ---------------- one-tap setup via URL fragment ----------------
+(function () {
+    if (location.hash.indexOf('#setup=') === 0) {
+        try {
+            var blob = JSON.parse(atob(decodeURIComponent(location.hash.slice(7))));
+            if (blob && blob.gh && blob.user) {
+                localStorage.setItem('jarvis_cfg', JSON.stringify(blob));
+            }
+        } catch (e) {}
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    }
+})();
+var CFG = JSON.parse(localStorage.getItem('jarvis_cfg') || 'null');
+
+// ---------------- service worker (works here: https) ----------------
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(function () {});
+}
+
+// ---------------- tabs / clock / markdown ----------------
+document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+        document.querySelectorAll('.tab').forEach(function (x) { x.classList.remove('active'); });
+        document.querySelectorAll('.page').forEach(function (x) { x.classList.remove('active'); });
+        t.classList.add('active');
+        document.getElementById('page-' + t.dataset.page).classList.add('active');
+    });
+});
+function tick() {
+    document.getElementById('clock').textContent =
+        new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+tick(); setInterval(tick, 15000);
+function md(text) {
+    var esc = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    esc = esc.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    esc = esc.replace(/^- (.*)$/gm, '• $1');
+    return esc;
+}
+
+// ---------------- encrypted data from GitHub ----------------
+function b64ToBytes(b64) {
+    var bin = atob(b64.replace(/\s/g, ''));
+    var a = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    return a;
+}
+function hexToBytes(hex) {
+    var a = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < a.length; i++) a[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return a;
+}
+async function fetchRemoteSummary() {
+    var r = await fetch('https://api.github.com/repos/' + CFG.user + '/jarvis-data/contents/summary.enc?ref=main', {
+        headers: { 'Authorization': 'token ' + CFG.gh, 'Accept': 'application/vnd.github+json' },
+        cache: 'no-store'
+    });
+    if (!r.ok) throw new Error('GitHub ' + r.status);
+    var d = await r.json();
+    var enc = b64ToBytes(d.content || '');
+    var iv = enc.slice(0, 12), ct = enc.slice(12);
+    var key = await crypto.subtle.importKey('raw', hexToBytes(CFG.key), 'AES-GCM', false, ['decrypt']);
+    var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ct);
+    return JSON.parse(new TextDecoder().decode(pt));
+}
+
+// ---------------- JARVIS face (animated chat background) ----------------
+(function () {
+    var cv = document.getElementById('faceCanvas');
+    var ctx = cv.getContext('2d');
+    var speakUntil = 0, thinkUntil = 0;
+    var blinkT = 0, nextBlink = Date.now() + 3000;
+    window.jarvisFace = {
+        speak: function (ms) { thinkUntil = 0; speakUntil = Date.now() + (ms || 2500); },
+        think: function () { thinkUntil = Date.now() + 120000; },
+        calm: function () { thinkUntil = 0; }
+    };
+    function accent() {
+        return getComputedStyle(document.documentElement).getPropertyValue('--cyan').trim() || '#00d4ff';
+    }
+    function draw() {
+        requestAnimationFrame(draw);
+        if (cv.style.display === 'none') return;
+        if (!document.getElementById('page-chat').classList.contains('active')) return;
+        var w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+        if (!w || !h) return;
+        if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        var t = Date.now() / 1000, col = accent();
+        var cx = w / 2, cy = h * 0.40, R = Math.min(w, h) * 0.30;
+        var now = Date.now();
+        var speaking = now < speakUntil, thinking = now < thinkUntil;
+        ctx.strokeStyle = col;
+        // rotating HUD rings (spin faster while thinking)
+        var speed = thinking ? 2.4 : 0.45;
+        for (var i = 0; i < 3; i++) {
+            ctx.beginPath();
+            var r = R * (1.18 + i * 0.17);
+            var a0 = t * speed * (i % 2 ? 1 : -1) + i * 2.1;
+            ctx.globalAlpha = 0.5 - i * 0.13;
+            ctx.arc(cx, cy, r, a0, a0 + Math.PI * (0.55 + 0.25 * i));
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        // tick marks on outer ring
+        ctx.globalAlpha = 0.25;
+        for (var k = 0; k < 12; k++) {
+            var a = k * Math.PI / 6 + t * 0.1;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(a) * R * 1.62, cy + Math.sin(a) * R * 1.62);
+            ctx.lineTo(cx + Math.cos(a) * R * 1.70, cy + Math.sin(a) * R * 1.70);
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        // head outline
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // eyes (blink now and then)
+        if (now > nextBlink) { blinkT = now; nextBlink = now + 2500 + Math.random() * 4500; }
+        var b = Math.max(0, 1 - Math.abs(now - blinkT - 90) / 90);
+        var openness = Math.max(0.08, 1 - b);
+        [-1, 1].forEach(function (s) {
+            var ex = cx + s * R * 0.38, ey = cy - R * 0.14;
+            var g = ctx.createRadialGradient(ex, ey, 0, ex, ey, R * 0.22);
+            g.addColorStop(0, col);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.ellipse(ex, ey, R * 0.17, R * 0.085 * openness, 0, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        // mouth waveform (ripples gently, dances while speaking)
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        var my = cy + R * 0.45, mw = R * 0.85;
+        for (var x = 0; x <= mw; x += 3) {
+            var p = x / mw;
+            var env = Math.sin(p * Math.PI);
+            var amp = speaking ? R * (0.05 + 0.07 * Math.abs(Math.sin(t * 9 + p * 14))) : R * 0.02;
+            var y = my + Math.sin(p * 11 + t * 5) * amp * env;
+            if (x === 0) ctx.moveTo(cx - mw / 2 + x, y); else ctx.lineTo(cx - mw / 2 + x, y);
+        }
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+    draw();
+})();
+
+// ---------------- chat (direct to Groq) ----------------
+var chatHistory = [];
+var log = document.getElementById('chatLog');
+var input = document.getElementById('chatInput');
+var btn = document.getElementById('sendBtn');
+
+function addMsg(cls, html) {
+    var div = document.createElement('div');
+    div.className = 'msg ' + cls;
+    div.innerHTML = html;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+}
+
+function directChat(messages) {
+    var cached = JSON.parse(localStorage.getItem('jarvis_summary') || 'null');
+    var sys = (cached && cached.personaSystem) ||
+        "You are JARVIS, Tony Stark's AI assistant. Be helpful, witty and concise. Plain simple English, short sentences. Address the user as sir. Never invent data.";
+    var mem = (cached && cached.memory) || [];
+    var ctrl = new AbortController();
+    setTimeout(function () { ctrl.abort(); }, 25000);
+    return fetch('https://api.groq.com/openai/v1/chat/completions', {
+        signal: ctrl.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + CFG.groq },
+        body: JSON.stringify({
+            model: 'openai/gpt-oss-120b', max_tokens: 700, temperature: 0.4,
+            messages: [{ role: 'system', content: sys }].concat(mem).concat(messages.slice(-12))
+        })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        var t = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+        if (!t) throw new Error((d.error && d.error.message) || 'empty reply');
+        return t.trim();
+    });
+}
+
+function sendMsg() {
+    var text = input.value.trim();
+    if (!text || btn.disabled) return;
+    if (!CFG || !CFG.groq) {
+        addMsg('jarvis', "I'm not set up yet, sir. At home, open the setup link in Safari once (ask Claude for it) and I'll work anywhere after that.");
+        return;
+    }
+    input.value = '';
+    addMsg('user', md(text));
+    chatHistory.push({ role: 'user', content: text });
+    var think = addMsg('jarvis thinking', 'Thinking, sir...');
+    btn.disabled = true;
+    if (window.jarvisFace) window.jarvisFace.think();
+    directChat(chatHistory).then(function (reply) {
+        think.remove();
+        chatHistory.push({ role: 'assistant', content: reply });
+        addMsg('jarvis', md(reply));
+        if (window.jarvisFace) window.jarvisFace.speak(Math.min(9000, 1200 + reply.length * 35));
+    }).catch(function (e) {
+        think.remove();
+        addMsg('jarvis', "I can't reach my systems, sir — check your internet connection. (" + (e && e.message ? e.message : 'unknown') + ")");
+    }).finally(function () { btn.disabled = false; });
+}
+document.getElementById('chatBar').addEventListener('submit', function (e) {
+    e.preventDefault();
+    sendMsg();
+});
+window.addEventListener('error', function (e) {
+    addMsg('jarvis', '⚠ App error, sir: ' + (e.message || 'unknown'));
+});
+window.addEventListener('unhandledrejection', function (e) {
+    addMsg('jarvis', '⚠ App error, sir: ' + ((e.reason && e.reason.message) || 'unknown'));
+});
+
+// ---------------- markets + brief rendering ----------------
+function drawSpark(snaps) {
+    var c = document.getElementById('spark');
+    var dpr = window.devicePixelRatio || 1;
+    var w = c.clientWidth, h = 90;
+    c.width = w * dpr; c.height = h * dpr;
+    var ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    if (!snaps || snaps.length < 2) return;
+    var vals = snaps.map(function (s) { return s.equity; });
+    var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    var pad = (max - min) * 0.1 || 1;
+    min -= pad; max += pad;
+    function x(i) { return (i / (vals.length - 1)) * (w - 8) + 4; }
+    function y(v) { return h - 8 - ((v - min) / (max - min)) * (h - 16); }
+    ctx.beginPath();
+    ctx.moveTo(x(0), y(vals[0]));
+    for (var i = 1; i < vals.length; i++) ctx.lineTo(x(i), y(vals[i]));
+    ctx.lineTo(x(vals.length - 1), h); ctx.lineTo(x(0), h); ctx.closePath();
+    var g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, 'rgba(0,212,255,0.25)'); g.addColorStop(1, 'rgba(0,212,255,0)');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x(0), y(vals[0]));
+    for (var j = 1; j < vals.length; j++) ctx.lineTo(x(j), y(vals[j]));
+    ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x(vals.length - 1), y(vals[vals.length - 1]), 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#00d4ff'; ctx.fill();
+}
+
+// theme set in the Mac's JARVIS Studio, delivered inside the synced data
+var themeStyleEl = document.createElement('style');
+document.head.appendChild(themeStyleEl);
+function applyTheme(t) {
+    if (!t) return;
+    var r = document.documentElement.style;
+    if (t.accent) {
+        r.setProperty('--cyan', t.accent);
+        r.setProperty('--cyan-dim', t.accent + '55');
+        r.setProperty('--cyan-faint', t.accent + '22');
+    }
+    if (t.bg) r.setProperty('--bg', t.bg);
+    if (t.panel) r.setProperty('--panel', t.panel);
+    document.body.style.fontFamily = (t.font === 'mono') ? "'Courier New', monospace" : "-apple-system, 'Helvetica Neue', sans-serif";
+    var rad = (typeof t.radius === 'number') ? t.radius : 12;
+    var scale = (typeof t.fontScale === 'number') ? t.fontScale : 1;
+    themeStyleEl.textContent =
+        '.card{border-radius:' + rad + 'px}.msg{border-radius:' + Math.max(4, rad) + 'px}' +
+        '#chatInput,#sendBtn{border-radius:' + Math.max(8, rad + 8) + 'px}' +
+        '.msg{font-size:' + Math.round(15 * scale) + 'px}' +
+        '#briefBody{font-size:' + Math.round(14 * scale) + 'px}' +
+        '.big{font-size:' + Math.round(32 * scale) + 'px}' +
+        '.trow{font-size:' + Math.round(13 * scale) + 'px}';
+    var dot = document.getElementById('headerDot');
+    if (dot) dot.style.boxShadow = (t.glow === false) ? 'none' : '0 0 8px var(--cyan)';
+    var face = document.getElementById('faceCanvas');
+    if (face) face.style.display = (t.face === false) ? 'none' : '';
+    if (t.title) {
+        document.getElementById('headerTitle').textContent = t.title;
+        document.title = t.title.replace(/\./g, '');
+    }
+    var tabs = t.tabs || {};
+    document.querySelectorAll('.tab').forEach(function (el) {
+        el.style.display = (tabs[el.dataset.page] === false) ? 'none' : '';
+    });
+    var cardMap = { portfolio: 'card-portfolio', tally: 'card-tally', alert: 'alertCard', brief: 'card-brief' };
+    var hidden = t.hidden || {};
+    Object.keys(cardMap).forEach(function (k) {
+        var el = document.getElementById(cardMap[k]);
+        if (el) el.dataset.userHidden = hidden[k] ? '1' : '';
+        if (el && hidden[k]) el.style.display = 'none';
+        else if (el && k !== 'alert') el.style.display = '';
+    });
+    var order = t.order || {};
+    ['markets', 'brief'].forEach(function (tab) {
+        (order[tab] || []).forEach(function (k) {
+            var el = document.getElementById(cardMap[k]);
+            if (el && el.parentNode) el.parentNode.appendChild(el);
+        });
+    });
+}
+applyTheme(JSON.parse(localStorage.getItem('jarvis_summary') || 'null') && JSON.parse(localStorage.getItem('jarvis_summary')).theme);
+
+function renderSummary(d, fromCache) {
+    if (d.theme) applyTheme(d.theme);
+    var last = d.snapshots && d.snapshots[d.snapshots.length - 1];
+    if (last) {
+        document.getElementById('equity').textContent = '$' + Number(last.equity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        var up = last.dayPnl >= 0;
+        var pnlEl = document.getElementById('dayPnl');
+        pnlEl.textContent = (up ? '▲ +' : '▼ ') + '$' + Math.abs(last.dayPnl).toFixed(2) + ' (' + (up ? '+' : '') + last.dayPnlPct + '%)';
+        pnlEl.className = 'pnl ' + (up ? 'up' : 'down');
+        document.getElementById('asOf').textContent = 'as of ' + last.date;
+        drawSpark(d.snapshots);
+    }
+    var tEl = document.getElementById('tally');
+    tEl.innerHTML = '';
+    (d.tally || []).slice().reverse().forEach(function (day) {
+        var row = document.createElement('div');
+        row.className = 'trow';
+        var chips = day.trades.map(function (t) { return '<span class="chip ' + t + '">' + t + '</span>'; }).join('');
+        var up = day.pnl >= 0;
+        row.innerHTML = '<span class="d">' + day.date.slice(5) + '</span><span class="chips">' + chips + '</span>' +
+            '<span class="p ' + (up ? 'up' : 'down') + '">' + (up ? '+' : '') + Number(day.pnl).toFixed(2) + '</span>';
+        tEl.appendChild(row);
+    });
+    if (d.alert && d.alert.title && !document.getElementById('alertCard').dataset.userHidden) {
+        document.getElementById('alertCard').style.display = 'block';
+        document.getElementById('alertTitle').textContent = d.alert.title;
+        document.getElementById('alertMeta').textContent =
+            (d.alert.source || '') + (d.alert.impact ? ' · impact: ' + d.alert.impact : '');
+    }
+    var bw = document.getElementById('briefWhen');
+    if (d.briefTime) {
+        var age = Date.now() - new Date(d.briefTime).getTime();
+        var days = Math.floor(age / 86400000);
+        var stamp = new Date(d.briefTime).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        bw.textContent = 'Written by the Mac: ' + stamp + (days >= 1 ? ' — ' + days + ' day' + (days > 1 ? 's' : '') + ' old' : '');
+        bw.style.color = days >= 1 ? '#ffb300' : '';
+    } else if (bw) { bw.textContent = ''; }
+    if (d.brief) {
+        var html = d.brief
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+            .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+            .replace(/^- (.*)$/gm, '<li>$1</li>')
+            .replace(/\n\n/g, '<br>');
+        document.getElementById('briefBody').innerHTML = html;
+    } else {
+        document.getElementById('briefBody').textContent = 'No brief in the last sync, sir.';
+    }
+    var when = d.updated ? new Date(d.updated).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'unknown';
+    ['mOffline', 'bOffline'].forEach(function (id) {
+        var el = document.getElementById(id);
+        el.textContent = (fromCache ? 'Offline — showing stored sync (' : 'Last sync from your Mac: ') + when + (fromCache ? ')' : '');
+        el.style.display = 'block';
+    });
+}
+
+function loadSummary() {
+    if (!CFG) {
+        document.getElementById('greeting').innerHTML =
+            "Not set up yet, sir. While on your home Wi-Fi, open the setup link in Safari once — it hands me everything I need, then add me to your home screen from there.";
+        return;
+    }
+    fetchRemoteSummary().then(function (d) {
+        localStorage.setItem('jarvis_summary', JSON.stringify(d));
+        renderSummary(d, false);
+    }).catch(function () {
+        var cached = JSON.parse(localStorage.getItem('jarvis_summary') || 'null');
+        if (cached) renderSummary(cached, true);
+    });
+}
+loadSummary();
+setInterval(loadSummary, 120000);
+</script>
+</body>
+</html>
