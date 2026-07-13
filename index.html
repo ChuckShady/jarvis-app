@@ -407,10 +407,16 @@ document.getElementById('chatBar').addEventListener('submit', function (e) {
     sendMsg();
 });
 window.addEventListener('error', function (e) {
-    addMsg('jarvis', '⚠ App error, sir: ' + (e.message || 'unknown'));
+    // Browsers report masked/cross-origin errors as just "Script error." with no
+    // detail — nothing actionable, so don't alarm the user with those.
+    var m = e.message || '';
+    if (!m || /^Script error\.?$/i.test(m)) return;
+    addMsg('jarvis', '⚠ App error, sir: ' + m);
 });
 window.addEventListener('unhandledrejection', function (e) {
-    addMsg('jarvis', '⚠ App error, sir: ' + ((e.reason && e.reason.message) || 'unknown'));
+    var m = (e.reason && e.reason.message) || '';
+    if (!m) return;
+    addMsg('jarvis', '⚠ App error, sir: ' + m);
 });
 
 // ---------------- markets + brief rendering ----------------
