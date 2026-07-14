@@ -215,7 +215,9 @@ function backupCfg(jsonStr) {
                 backupCfg(raw);
             }
         } catch (e) {}
-        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+        // Only clear the hash in Safari — in standalone (home screen) mode keep
+        // it so the URL saved by iOS always carries the config on every launch.
+        try { if (!window.navigator.standalone) { history.replaceState(null, '', location.pathname); } } catch (e) {}
     }
 })();
 var CFG = JSON.parse(localStorage.getItem('jarvis_cfg') || 'null');
