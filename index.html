@@ -344,7 +344,7 @@ async function fetchRemoteSummary() {
     return JSON.parse(new TextDecoder().decode(pt));
 }
 
-// ---------------- JARVIS face (human cube face) ----------------
+// ---------------- JARVIS face (v12 — drawn overlay) ----------------
 (function () {
     var cv = document.getElementById('faceCanvas');
     var ctx = cv.getContext('2d');
@@ -355,57 +355,15 @@ async function fetchRemoteSummary() {
         calm: function () { thinkUntil = 0; }
     };
 
-    // ---- Face regions ----
+    // ---- Face silhouette (v10 oval — stable and clean) ----
     function inFace(x, y, fcx, fcy, fw, fh) {
         var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        // Cranium / forehead (wide upper oval)
-        if (nx*nx/0.90 + (ny+0.38)*(ny+0.38)/0.32 < 1.0) return true;
-        // Main face oval: cheeks + mid-face
-        if (nx*nx/0.97 + (ny-0.08)*(ny-0.08)/0.76 < 1.0) return true;
-        // Jaw (narrower oval, lower)
-        if (nx*nx/0.60 + (ny-0.46)*(ny-0.46)/0.27 < 1.0) return true;
-        // Chin point
-        if (nx*nx/0.10 + (ny-0.70)*(ny-0.70)/0.028 < 1.0) return true;
-        // Neck
-        if (Math.abs(nx) < 0.18 && ny > 0.73 && ny < 1.08) return true;
-        // Shoulders
-        if (nx < -0.14 && ny > 0.90 && ny < 1.28 && (nx+0.80)*(nx+0.80)/0.48+(ny-1.06)*(ny-1.06)/0.15 < 1) return true;
-        if (nx >  0.14 && ny > 0.90 && ny < 1.28 && (nx-0.80)*(nx-0.80)/0.48+(ny-1.06)*(ny-1.06)/0.15 < 1) return true;
-        return false;
-    }
-    // Wider almond eyes (human proportions)
-    function eyeRegion(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        return ((nx+0.33)*(nx+0.33)/0.052 + (ny+0.23)*(ny+0.23)/0.0020 < 1.0) ||
-               ((nx-0.33)*(nx-0.33)/0.052 + (ny+0.23)*(ny+0.23)/0.0020 < 1.0);
-    }
-    // Thin arched eyebrow strips above eyes
-    function eyebrowRegion(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        return ((nx+0.30)*(nx+0.30)/0.046 + (ny+0.39)*(ny+0.39)/0.0010 < 1.0) ||
-               ((nx-0.30)*(nx-0.30)/0.046 + (ny+0.39)*(ny+0.39)/0.0010 < 1.0);
-    }
-    // Nose: bridge strip + tip + nostrils
-    function noseRegion(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        if (Math.abs(nx) < 0.07 && ny > -0.02 && ny < 0.28) return true;
-        if (nx*nx/0.018 + (ny-0.26)*(ny-0.26)/0.007 < 1.0) return true;
-        if ((nx+0.12)*(nx+0.12)/0.009 + (ny-0.33)*(ny-0.33)/0.004 < 1.0) return true;
-        if ((nx-0.12)*(nx-0.12)/0.009 + (ny-0.33)*(ny-0.33)/0.004 < 1.0) return true;
-        return false;
-    }
-    // Mouth: thin horizontal strip
-    function mouthRegion(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        return nx*nx/0.095 + (ny-0.50)*(ny-0.50)/0.0015 < 1.0;
-    }
-    // Region priority: 0=normal 1=eye 2=brow 3=nose 4=mouth
-    function getFeat(x, y, fcx, fcy, fw, fh) {
-        if (eyeRegion(x,y,fcx,fcy,fw,fh))     return 1;
-        if (eyebrowRegion(x,y,fcx,fcy,fw,fh)) return 2;
-        if (mouthRegion(x,y,fcx,fcy,fw,fh))   return 4;
-        if (noseRegion(x,y,fcx,fcy,fw,fh))    return 3;
-        return 0;
+        return (nx*nx + ny*ny < 1.0) ||
+               (nx*nx/1.12 + (ny-0.08)*(ny-0.08)/0.96 < 1.0) ||
+               (nx*nx/0.88 + (ny-0.52)*(ny-0.52)/0.28 < 1.0) ||
+               (Math.abs(nx) < 0.20 && ny > 0.70 && ny < 1.08) ||
+               (nx < -0.15 && ny > 0.82 && ny < 1.28 && (nx+0.85)*(nx+0.85)/0.55+(ny-1.0)*(ny-1.0)/0.18 < 1) ||
+               (nx >  0.15 && ny > 0.82 && ny < 1.28 && (nx-0.85)*(nx-0.85)/0.55+(ny-1.0)*(ny-1.0)/0.18 < 1);
     }
 
     var cubes = [], rain = [];
@@ -422,14 +380,12 @@ async function fetchRemoteSummary() {
                 var nx = (cx-fcx)/fw, ny = (cy-fcy)/fh;
                 var dist  = Math.sqrt(nx*nx + ny*ny);
                 var depth = Math.max(0.1, 1.0 - dist*0.52);
-                var feat  = getFeat(cx, cy, fcx, fcy, fw, fh);
                 var rBias = (cx - w*0.5) / (w*0.5);
                 var dChance = 0.08 + Math.max(0, rBias)*0.58 + Math.max(0, -ny)*0.10;
-                // Feature cubes (eyes/brows/nose/mouth) stay stable
-                var disp  = (feat === 0) && Math.random() < dChance;
+                var disp  = Math.random() < dChance;
                 cubes.push({
                     tx: cx, ty: cy, x: cx+(Math.random()-0.5)*120, y: cy+(Math.random()-0.5)*120,
-                    vx: 0, vy: 0, depth: depth, feat: feat, disp: disp,
+                    vx: 0, vy: 0, depth: depth, disp: disp,
                     dAngle: Math.random()*Math.PI*2, dDist: 50+Math.random()*180,
                     orbSpeed: (Math.random()*0.8+0.3) * (Math.random()<0.5?1:-1),
                     phase: Math.random()*Math.PI*2, fSpd: 0.35+Math.random()*0.55,
@@ -447,18 +403,13 @@ async function fetchRemoteSummary() {
         initialized = true;
     }
 
-    function drawCube(x, y, s, depth, feat, alpha, cs, scanBoost, pulseBoost, speakGlow) {
-        var side = s*0.36, d = depth, sg = speakGlow || 0;
-        var isEye = feat===1, isBrow = feat===2, isNose = feat===3, isMouth = feat===4;
-        var eyeB  = isEye  ? 0.85 : 0;
-        var browB = isBrow ? 0.45 : 0;
-        var noseB = isNose ? 0.22 : 0;
-        var moutB = isMouth? sg*0.5 : 0;
-        var boost = scanBoost + pulseBoost + eyeB + browB + noseB + moutB;
-        var r = Math.min(255, Math.floor(10  + d*22  + boost*100 + cs*0.28 + (isBrow?20:0)));
+    function drawCube(x, y, s, depth, alpha, cs, scanBoost, pulseBoost) {
+        var side = s*0.36, d = depth;
+        var boost = scanBoost + pulseBoost;
+        var r = Math.min(255, Math.floor(10  + d*22  + boost*100 + cs*0.28));
         var g = Math.min(255, Math.floor(60  + d*115 + boost*122 + cs*0.12));
         var b = Math.min(255, Math.floor(148 + d*100 + boost*62));
-        var a = Math.min(1, alpha + boost*0.45 + sg*0.20);
+        var a = Math.min(1, alpha + boost*0.45);
         ctx.globalAlpha = a;
         ctx.fillStyle = 'rgb('+r+','+g+','+b+')';
         ctx.fillRect(x-s/2, y-s/2, s, s);
@@ -473,15 +424,121 @@ async function fetchRemoteSummary() {
             ctx.strokeStyle = 'rgba('+Math.min(255,r+85)+','+Math.min(255,g+105)+',255,1)';
             ctx.lineWidth = 0.5; ctx.strokeRect(x-s/2, y-s/2, s, s);
         }
-        // Eye cubes: white hot core
-        if (isEye) {
-            var ep = 0.65 + 0.35*Math.sin(Date.now()/400);
-            var eg = ctx.createRadialGradient(x, y, 0, x, y, s*0.85);
-            eg.addColorStop(0, 'rgba(255,255,255,'+(ep*a)+')');
-            eg.addColorStop(0.35, 'rgba(120,240,255,'+(ep*a*0.65)+')');
-            eg.addColorStop(1, 'rgba(0,180,255,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = eg;
-            ctx.beginPath(); ctx.arc(x, y, s*0.85, 0, Math.PI*2); ctx.fill();
+    }
+
+    // ---- Drawn face features: eyes, brows, nose, mouth ----
+    function drawFaceFeatures(fcx, fcy, fw, fh, t, speaking) {
+        var eyeY = fcy - fh*0.225;
+        var ew = fw*0.195, eh = fh*0.036;
+
+        // Eyes
+        [fcx - fw*0.30, fcx + fw*0.30].forEach(function(ex) {
+            var phase = (ex > fcx) ? 0.5 : -0.5;
+            var ep = 0.62 + 0.38*Math.sin(t*2.4 + phase);
+
+            // Outer glow haze
+            var g0 = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, ew*2.2);
+            g0.addColorStop(0, 'rgba(0,140,255,'+(0.22*ep)+')');
+            g0.addColorStop(1, 'rgba(0,60,180,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = g0;
+            ctx.beginPath(); ctx.ellipse(ex, eyeY, ew*2.2, ew*2.2, 0, 0, Math.PI*2); ctx.fill();
+
+            // Dark backdrop clipped to eye almond
+            ctx.save();
+            ctx.beginPath(); ctx.ellipse(ex, eyeY, ew, eh, 0, 0, Math.PI*2); ctx.clip();
+            ctx.globalAlpha = 0.82; ctx.fillStyle = 'rgba(0,8,20,1)';
+            ctx.fillRect(ex-ew, eyeY-eh, ew*2, eh*2);
+
+            // Iris gradient inside eye
+            var g1 = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, ew);
+            g1.addColorStop(0,    'rgba(80,232,255,'+(0.95*ep)+')');
+            g1.addColorStop(0.35, 'rgba(0,170,255,'+(0.70*ep)+')');
+            g1.addColorStop(0.70, 'rgba(0,90,200,'+(0.38*ep)+')');
+            g1.addColorStop(1,    'rgba(0,40,130,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = g1;
+            ctx.fillRect(ex-ew, eyeY-eh, ew*2, eh*2);
+            ctx.restore();
+
+            // Pupil / white core
+            var g2 = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, ew*0.26);
+            g2.addColorStop(0,    'rgba(255,255,255,'+ep+')');
+            g2.addColorStop(0.45, 'rgba(180,248,255,'+(ep*0.82)+')');
+            g2.addColorStop(1,    'rgba(0,200,255,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = g2;
+            ctx.beginPath(); ctx.arc(ex, eyeY, ew*0.26, 0, Math.PI*2); ctx.fill();
+
+            // Eye outline
+            ctx.globalAlpha = ep * 0.92;
+            ctx.strokeStyle = 'rgba(0,225,255,1)'; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.ellipse(ex, eyeY, ew, eh, 0, 0, Math.PI*2); ctx.stroke();
+
+            // Inner ring detail
+            ctx.globalAlpha = ep * 0.28;
+            ctx.strokeStyle = 'rgba(160,240,255,0.9)'; ctx.lineWidth = 0.8;
+            ctx.beginPath(); ctx.ellipse(ex, eyeY, ew*0.58, eh*0.58, 0, 0, Math.PI*2); ctx.stroke();
+
+            // Horizontal lens flare streak
+            var lf = ctx.createLinearGradient(ex-ew*1.5, eyeY, ex+ew*1.5, eyeY);
+            lf.addColorStop(0,   'rgba(0,200,255,0)');
+            lf.addColorStop(0.5, 'rgba(130,248,255,'+(0.16*ep)+')');
+            lf.addColorStop(1,   'rgba(0,200,255,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = lf;
+            ctx.fillRect(ex-ew*1.5, eyeY-1.2, ew*3, 2.4);
+        });
+
+        // Eyebrows
+        [-1, 1].forEach(function(s) {
+            var bx0 = fcx + s*fw*0.10, by0 = fcy - fh*0.370;
+            var bx1 = fcx + s*fw*0.52, by1 = fcy - fh*0.355;
+            var bxc = fcx + s*fw*0.30, byc = fcy - fh*0.410;
+            var bp  = 0.55 + 0.18*Math.sin(t*0.9 + s);
+            // Glow pass
+            ctx.globalAlpha = bp * 0.28; ctx.strokeStyle = 'rgba(0,180,255,0.9)'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(bx0,by0); ctx.quadraticCurveTo(bxc,byc,bx1,by1); ctx.stroke();
+            // Sharp line
+            ctx.globalAlpha = bp * 0.95; ctx.strokeStyle = 'rgba(40,220,255,1)'; ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.moveTo(bx0,by0); ctx.quadraticCurveTo(bxc,byc,bx1,by1); ctx.stroke();
+        });
+
+        // Nose bridge (subtle angular lines)
+        ctx.globalAlpha = 0.26; ctx.strokeStyle = 'rgba(0,190,255,0.8)'; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(fcx - fw*0.058, fcy - fh*0.048);
+        ctx.lineTo(fcx - fw*0.096, fcy + fh*0.198);
+        ctx.lineTo(fcx - fw*0.140, fcy + fh*0.270);
+        ctx.moveTo(fcx + fw*0.058, fcy - fh*0.048);
+        ctx.lineTo(fcx + fw*0.096, fcy + fh*0.198);
+        ctx.lineTo(fcx + fw*0.140, fcy + fh*0.270);
+        ctx.stroke();
+
+        // Mouth
+        var mouthY = fcy + fh*0.498, mw = fw*0.27;
+        if (speaking) {
+            var mOpen = Math.abs(Math.sin(t * 14));
+            var mh = fh * (0.018 + mOpen * 0.048);
+            // Glow behind mouth
+            var mg = ctx.createRadialGradient(fcx, mouthY, 0, fcx, mouthY, mw);
+            mg.addColorStop(0, 'rgba(0,200,255,0.22)'); mg.addColorStop(1, 'rgba(0,100,200,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = mg;
+            ctx.beginPath(); ctx.ellipse(fcx, mouthY, mw, fh*0.072, 0, 0, Math.PI*2); ctx.fill();
+            // Upper lip
+            ctx.globalAlpha = 0.78; ctx.strokeStyle = 'rgba(0,222,255,0.95)'; ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(fcx-mw, mouthY);
+            ctx.bezierCurveTo(fcx-mw*0.45, mouthY-mh*0.5, fcx+mw*0.45, mouthY-mh*0.5, fcx+mw, mouthY);
+            ctx.stroke();
+            // Lower lip
+            ctx.globalAlpha = 0.55; ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(fcx-mw*0.70, mouthY);
+            ctx.bezierCurveTo(fcx-mw*0.28, mouthY+mh*0.88, fcx+mw*0.28, mouthY+mh*0.88, fcx+mw*0.70, mouthY);
+            ctx.stroke();
+        } else {
+            // Closed mouth glow + line
+            ctx.globalAlpha = 0.10; ctx.strokeStyle = 'rgba(0,200,255,0.8)'; ctx.lineWidth = 7;
+            ctx.beginPath(); ctx.moveTo(fcx-mw, mouthY); ctx.quadraticCurveTo(fcx, mouthY+fh*0.008, fcx+mw, mouthY); ctx.stroke();
+            ctx.globalAlpha = 0.42; ctx.strokeStyle = 'rgba(0,222,255,0.90)'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(fcx-mw, mouthY); ctx.quadraticCurveTo(fcx, mouthY+fh*0.008, fcx+mw, mouthY); ctx.stroke();
         }
     }
 
@@ -499,14 +556,11 @@ async function fetchRemoteSummary() {
         var t = Date.now()/1000;
         var dt = 0.016;
         var now = Date.now();
-        var speaking = now < speakUntil, thinking = now < thinkUntil;
-
+        var speaking = now < speakUntil;
         var fcx = w*0.5, fcy = h*0.42, fw = w*0.34, fh = h*0.44;
 
         // Clear
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#0a0e17';
-        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = 1; ctx.fillStyle = '#0a0e17'; ctx.fillRect(0, 0, w, h);
 
         // Ambient face glow (breathes)
         var breath = 0.82 + 0.18*Math.sin(t*0.72);
@@ -514,48 +568,34 @@ async function fetchRemoteSummary() {
         ag.addColorStop(0, 'rgba(0,140,255,0.18)');
         ag.addColorStop(0.45, 'rgba(0,80,200,0.07)');
         ag.addColorStop(1, 'rgba(0,20,60,0)');
-        ctx.globalAlpha = breath; ctx.fillStyle = ag;
-        ctx.fillRect(0, 0, w, h);
+        ctx.globalAlpha = breath; ctx.fillStyle = ag; ctx.fillRect(0, 0, w, h);
 
         // Matrix rain
         rain.forEach(function(r) {
             r.y += r.spd * dt;
             if (r.y > h + r.len) { r.y = -r.len; r.x = Math.random()*w; }
-            ctx.globalAlpha = r.bright;
-            ctx.strokeStyle = '#00d4ff';
-            ctx.lineWidth = 0.9;
-            ctx.beginPath(); ctx.moveTo(r.x, r.y - r.len); ctx.lineTo(r.x, r.y); ctx.stroke();
+            ctx.globalAlpha = r.bright; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 0.9;
+            ctx.beginPath(); ctx.moveTo(r.x, r.y-r.len); ctx.lineTo(r.x, r.y); ctx.stroke();
         });
 
         // Pulse timer
         pulseTimer += dt;
         if (pulseTimer > 5.0) { pulseTimer = 0; pulseActive = true; pulseR = 0; }
-        if (pulseActive) {
-            pulseR += 320 * dt;
-            if (pulseR > Math.max(w, h) * 0.85) pulseActive = false;
-        }
+        if (pulseActive) { pulseR += 320*dt; if (pulseR > Math.max(w,h)*0.85) pulseActive = false; }
 
-        // Global glitch band
+        // Glitch band
         var glitchOn = (Math.sin(t*7.3)*Math.sin(t*2.1) > 0.88);
         var glitchBandY = h * (0.18 + Math.random()*0.55);
-        var glitchOff = 0;
-        if (glitchOn) glitchOff = (Math.random()-0.5)*18;
+        var glitchOff = glitchOn ? (Math.random()-0.5)*18 : 0;
 
-        // Scan beam
+        // Scan beam Y
         var scanCycle = (t % 3.8) / 3.8;
         var scanY = fcy - fh*1.05 + scanCycle * fh*2.1;
 
-        // Cube updates + draw
+        // Update + draw cubes
         cubes.forEach(function(c) {
             c.t += dt;
-            // Float
             var floatY = Math.sin(c.t * c.fSpd + c.phase) * 2.2;
-            // Mouth bounce when speaking
-            var mouthBounce = 0;
-            if (speaking && c.feat === 4) {
-                mouthBounce = Math.abs(Math.sin(t*14 + c.phase)) * 7;
-            }
-            // Disperse orbit
             var dispX = 0, dispY = 0;
             if (c.disp) {
                 c.dAngle += c.orbSpeed * dt;
@@ -563,138 +603,63 @@ async function fetchRemoteSummary() {
                 dispX = Math.cos(c.dAngle) * c.dDist * wave;
                 dispY = Math.sin(c.dAngle) * c.dDist * wave * 0.65;
             }
-            // Glitch offset
             var gx = (glitchOn && Math.abs(c.ty - glitchBandY) < 12) ? glitchOff : 0;
-            // Target
             var tx2 = c.tx + dispX + gx;
-            var ty2 = c.ty + dispY + floatY + mouthBounce;
-            // Spring
+            var ty2 = c.ty + dispY + floatY;
             var kk = 0.13, damp = 0.72;
             c.vx = (c.vx + (tx2 - c.x)*kk) * damp;
             c.vy = (c.vy + (ty2 - c.y)*kk) * damp;
             c.x += c.vx; c.y += c.vy;
 
-            // Scan boost
             var scanBoost = Math.max(0, 1 - Math.abs(c.y - scanY)/14) * 0.7;
-            // Pulse boost
             var pdx = c.x - fcx, pdy = c.y - fcy;
-            var pDist = Math.sqrt(pdx*pdx + pdy*pdy);
-            var pulseBoost = pulseActive ? Math.max(0, 1 - Math.abs(pDist - pulseR)/22) * 0.9 : 0;
-            var baseAlpha = 0.22 + c.depth * 0.58;
-            var speakGlow = (speaking && c.feat === 4) ? Math.abs(Math.sin(t*12 + c.phase)) * 0.7 : 0;
-            drawCube(c.x, c.y, c.size, c.depth, c.feat, baseAlpha, c.cShift, scanBoost, pulseBoost, speakGlow);
+            var pulseBoost = pulseActive ? Math.max(0, 1 - Math.abs(Math.sqrt(pdx*pdx+pdy*pdy) - pulseR)/22) * 0.9 : 0;
+            drawCube(c.x, c.y, c.size, c.depth, 0.22 + c.depth*0.58, c.cShift, scanBoost, pulseBoost);
         });
         ctx.globalAlpha = 1;
 
-        // Scan beam — wider glow + bright line
+        // Scan beam glow + bright line
         var sb = ctx.createLinearGradient(0, scanY-32, 0, scanY+32);
-        sb.addColorStop(0,   'rgba(0,212,255,0)');
-        sb.addColorStop(0.38,'rgba(0,212,255,0.12)');
-        sb.addColorStop(0.5, 'rgba(160,245,255,0.48)');
-        sb.addColorStop(0.62,'rgba(0,212,255,0.12)');
-        sb.addColorStop(1,   'rgba(0,212,255,0)');
-        ctx.globalAlpha = 1; ctx.fillStyle = sb;
-        ctx.fillRect(0, scanY-32, w, 64);
-        ctx.globalAlpha = 0.85; ctx.strokeStyle = 'rgba(200,250,255,0.9)';
-        ctx.lineWidth = 1.2;
+        sb.addColorStop(0,    'rgba(0,212,255,0)');
+        sb.addColorStop(0.38, 'rgba(0,212,255,0.12)');
+        sb.addColorStop(0.5,  'rgba(160,245,255,0.48)');
+        sb.addColorStop(0.62, 'rgba(0,212,255,0.12)');
+        sb.addColorStop(1,    'rgba(0,212,255,0)');
+        ctx.globalAlpha = 1; ctx.fillStyle = sb; ctx.fillRect(0, scanY-32, w, 64);
+        ctx.globalAlpha = 0.85; ctx.strokeStyle = 'rgba(200,250,255,0.9)'; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(fcx-fw*1.08, scanY); ctx.lineTo(fcx+fw*1.08, scanY); ctx.stroke();
 
-        // Eyebrow arcs (drawn over brow cube region)
-        [-1,1].forEach(function(s) {
-            var bx0 = fcx + s*fw*0.10, by0 = fcy - fh*0.372; // inner end
-            var bx1 = fcx + s*fw*0.53, by1 = fcy - fh*0.360; // outer end
-            var bxc = fcx + s*fw*0.31, byc = fcy - fh*0.405; // arch peak
-            var bp  = 0.52 + 0.18*Math.sin(t*0.9 + s);
-            // Glow pass
-            ctx.globalAlpha = bp * 0.32; ctx.strokeStyle = 'rgba(0,180,255,0.8)';
-            ctx.lineWidth = 7;
-            ctx.beginPath(); ctx.moveTo(bx0,by0); ctx.quadraticCurveTo(bxc,byc,bx1,by1); ctx.stroke();
-            // Sharp line
-            ctx.globalAlpha = bp; ctx.strokeStyle = 'rgba(90,225,255,0.95)';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.moveTo(bx0,by0); ctx.quadraticCurveTo(bxc,byc,bx1,by1); ctx.stroke();
-        });
+        // Drawn face features (eyes, eyebrows, nose, mouth)
+        drawFaceFeatures(fcx, fcy, fw, fh, t, speaking);
 
-        // Eye glows — 3 layers (positions match eyeRegion: nx=±0.33, ny=-0.23)
-        [-1,1].forEach(function(s) {
-            var ex = fcx + s*fw*0.33, ey = fcy - fh*0.23;
-            var ep = 0.55 + 0.45*Math.sin(t*2.6 + s);
-            // Outer soft haze
-            var g1 = ctx.createRadialGradient(ex, ey, 0, ex, ey, fw*0.42);
-            g1.addColorStop(0, 'rgba(0,170,255,'+(0.28*ep)+')');
-            g1.addColorStop(1, 'rgba(0,80,200,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = g1;
-            ctx.beginPath(); ctx.arc(ex, ey, fw*0.42, 0, Math.PI*2); ctx.fill();
-            // Middle iris
-            var g2 = ctx.createRadialGradient(ex, ey, 0, ex, ey, fw*0.17);
-            g2.addColorStop(0, 'rgba(80,225,255,'+(0.92*ep)+')');
-            g2.addColorStop(0.5, 'rgba(0,160,255,'+(0.60*ep)+')');
-            g2.addColorStop(1, 'rgba(0,100,220,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = g2;
-            ctx.beginPath(); ctx.arc(ex, ey, fw*0.17, 0, Math.PI*2); ctx.fill();
-            // Inner white pupil
-            var g3 = ctx.createRadialGradient(ex, ey, 0, ex, ey, fw*0.065);
-            g3.addColorStop(0, 'rgba(255,255,255,'+(0.98*ep)+')');
-            g3.addColorStop(0.45,'rgba(160,245,255,'+(0.72*ep)+')');
-            g3.addColorStop(1, 'rgba(0,200,255,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = g3;
-            ctx.beginPath(); ctx.arc(ex, ey, fw*0.065, 0, Math.PI*2); ctx.fill();
-            // Horizontal lens flare streak
-            var streak = ctx.createLinearGradient(ex-fw*0.38, ey, ex+fw*0.38, ey);
-            streak.addColorStop(0, 'rgba(0,200,255,0)');
-            streak.addColorStop(0.5, 'rgba(0,212,255,'+(0.20*ep)+')');
-            streak.addColorStop(1, 'rgba(0,200,255,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = streak;
-            ctx.fillRect(ex-fw*0.38, ey-1.5, fw*0.76, 3);
-        });
-
-        // Mouth glow when speaking
+        // Speaking flash
         if (speaking) {
-            var mx = fcx, my = fcy + fh*0.50;
-            var mFlash = 0.10 + Math.abs(Math.sin(t*10)) * 0.24;
-            var mg = ctx.createRadialGradient(mx, my, 0, mx, my, fw*0.32);
-            mg.addColorStop(0, 'rgba(0,210,255,'+mFlash+')');
-            mg.addColorStop(1, 'rgba(0,100,200,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = mg;
-            ctx.beginPath(); ctx.arc(mx, my, fw*0.32, 0, Math.PI*2); ctx.fill();
-        }
-
-        // Speaking overlay — face flashes cyan
-        if (speaking) {
-            var sFlash = Math.abs(Math.sin(t*8)) * 0.20;
+            var sFlash = Math.abs(Math.sin(t*8)) * 0.18;
             var sf = ctx.createRadialGradient(fcx, fcy, fh*0.08, fcx, fcy, fh*1.2);
-            sf.addColorStop(0, 'rgba(0,210,255,'+(0.14+sFlash)+')');
-            sf.addColorStop(0.55, 'rgba(0,140,210,'+(0.04+sFlash*0.4)+')');
+            sf.addColorStop(0, 'rgba(0,210,255,'+(0.12+sFlash)+')');
+            sf.addColorStop(0.55, 'rgba(0,140,210,'+(0.04+sFlash*0.3)+')');
             sf.addColorStop(1, 'rgba(0,60,160,0)');
-            ctx.globalAlpha = 1; ctx.fillStyle = sf;
-            ctx.fillRect(0, 0, w, h);
+            ctx.globalAlpha = 1; ctx.fillStyle = sf; ctx.fillRect(0, 0, w, h);
         }
 
         // Corner HUD brackets
-        var bL = Math.min(w, h)*0.058;
+        var bL = Math.min(w,h)*0.058;
         var corners = [[14,14,1,1],[w-14,14,-1,1],[14,h-14,1,-1],[w-14,h-14,-1,-1]];
         ctx.globalAlpha = 0.48; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1.6;
         corners.forEach(function(c) {
             ctx.beginPath();
-            ctx.moveTo(c[0]+c[2]*bL, c[1]); ctx.lineTo(c[0], c[1]); ctx.lineTo(c[0], c[1]+c[3]*bL);
-            ctx.stroke();
+            ctx.moveTo(c[0]+c[2]*bL,c[1]); ctx.lineTo(c[0],c[1]); ctx.lineTo(c[0],c[1]+c[3]*bL); ctx.stroke();
         });
         ctx.globalAlpha = 0.65; ctx.fillStyle = '#00d4ff';
-        corners.forEach(function(c) {
-            ctx.beginPath(); ctx.arc(c[0], c[1], 2.2, 0, Math.PI*2); ctx.fill();
-        });
+        corners.forEach(function(c) { ctx.beginPath(); ctx.arc(c[0],c[1],2.2,0,Math.PI*2); ctx.fill(); });
 
-        // Pulse ring — double ring
+        // Double pulse ring
         if (pulseActive) {
             var pFade = Math.max(0, 1 - pulseR/(Math.max(w,h)*0.85));
-            ctx.globalAlpha = pFade * 0.85;
-            ctx.strokeStyle = 'rgba(0,220,255,1)';
-            ctx.lineWidth = 2.5;
+            ctx.globalAlpha = pFade * 0.85; ctx.strokeStyle = 'rgba(0,220,255,1)'; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.arc(fcx, fcy, pulseR, 0, Math.PI*2); ctx.stroke();
             if (pulseR > 18) {
-                ctx.globalAlpha = pFade * 0.28;
-                ctx.strokeStyle = 'rgba(120,245,255,1)';
-                ctx.lineWidth = 7;
+                ctx.globalAlpha = pFade * 0.28; ctx.strokeStyle = 'rgba(120,245,255,1)'; ctx.lineWidth = 7;
                 ctx.beginPath(); ctx.arc(fcx, fcy, pulseR-14, 0, Math.PI*2); ctx.stroke();
             }
         }
