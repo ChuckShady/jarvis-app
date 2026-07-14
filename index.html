@@ -60,7 +60,7 @@ body {
 .page.active { display: flex; }
 #pages { flex: 1; position: relative; min-height: 0; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
-#faceCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .18; z-index: 0; }
+#faceCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .22; z-index: 0; }
 #chatLog, #chatBar { position: relative; z-index: 1; }
 #chatLog { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px 6px; }
 .msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
@@ -344,13 +344,11 @@ async function fetchRemoteSummary() {
     return JSON.parse(new TextDecoder().decode(pt));
 }
 
-// ---------------- JARVIS face (animated chat background) ----------------
+// ---------------- JARVIS face (particle system) ----------------
 (function () {
     var cv = document.getElementById('faceCanvas');
     var ctx = cv.getContext('2d');
     var speakUntil = 0, thinkUntil = 0;
-    var blinkT = 0, nextBlink = Date.now() + 3000;
-    var bars = Array.from({length: 18}, function() { return 0.1; });
     window.jarvisFace = {
         speak: function (ms) { thinkUntil = 0; speakUntil = Date.now() + (ms || 2500); },
         think: function () { thinkUntil = Date.now() + 120000; },
@@ -358,15 +356,83 @@ async function fetchRemoteSummary() {
     };
     function accent() { return getComputedStyle(document.documentElement).getPropertyValue('--cyan').trim() || '#00d4ff'; }
 
-    function hexPath(ctx, x, y, r) {
-        ctx.beginPath();
-        for (var i = 0; i < 6; i++) {
-            var a = i * Math.PI / 3 - Math.PI / 6;
-            if (i === 0) ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a));
-            else ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a));
+    // Face anchor points — particles are attracted to these
+    var anchors = [];
+    var particles = [];
+    var initialized = false;
+
+    function buildFace(cx, cy, R) {
+        anchors = [];
+        // Head outline
+        for (var i = 0; i < 32; i++) {
+            var a = (i / 32) * Math.PI * 2;
+            anchors.push({ x: cx + Math.cos(a) * R * 0.72, y: cy + Math.sin(a) * R * 0.88, type: 'outline' });
         }
-        ctx.closePath();
+        // Left eye ring
+        for (var i = 0; i < 10; i++) {
+            var a = (i / 10) * Math.PI * 2;
+            anchors.push({ x: cx - R * 0.33 + Math.cos(a) * R * 0.14, y: cy - R * 0.22 + Math.sin(a) * R * 0.08, type: 'eye' });
+        }
+        // Right eye ring
+        for (var i = 0; i < 10; i++) {
+            var a = (i / 10) * Math.PI * 2;
+            anchors.push({ x: cx + R * 0.33 + Math.cos(a) * R * 0.14, y: cy - R * 0.22 + Math.sin(a) * R * 0.08, type: 'eye' });
+        }
+        // Eye centres (bright)
+        anchors.push({ x: cx - R * 0.33, y: cy - R * 0.22, type: 'eyecore' });
+        anchors.push({ x: cx + R * 0.33, y: cy - R * 0.22, type: 'eyecore' });
+        // Nose
+        for (var i = 0; i < 5; i++) {
+            anchors.push({ x: cx + (i - 2) * R * 0.06, y: cy + R * (0.05 + i * 0.08), type: 'nose' });
+        }
+        // Mouth
+        for (var i = 0; i < 14; i++) {
+            var p = i / 13, a = Math.PI + p * Math.PI;
+            anchors.push({ x: cx + Math.cos(a) * R * 0.38, y: cy + R * 0.52 + Math.sin(a) * R * 0.12, type: 'mouth' });
+        }
+        // Cheekbones
+        for (var i = 0; i < 5; i++) {
+            anchors.push({ x: cx - R * (0.58 - i * 0.06), y: cy + R * (0.28 + i * 0.04), type: 'cheek' });
+            anchors.push({ x: cx + R * (0.58 - i * 0.06), y: cy + R * (0.28 + i * 0.04), type: 'cheek' });
+        }
+        // Brow
+        for (var i = 0; i < 8; i++) {
+            var p = (i / 7) - 0.5;
+            anchors.push({ x: cx + p * R * 0.8, y: cy - R * 0.38 + Math.abs(p) * R * 0.08, type: 'brow' });
+        }
+        // Floating ambient particles
+        for (var i = 0; i < 30; i++) {
+            var a = Math.random() * Math.PI * 2, r = R * (1.1 + Math.random() * 0.8);
+            anchors.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r, type: 'ambient' });
+        }
     }
+
+    function initParticles(w, h) {
+        var cx = w / 2, cy = h * 0.40, R = Math.min(w, h) * 0.30;
+        buildFace(cx, cy, R);
+        particles = anchors.map(function(an, i) {
+            var spread = 80;
+            return {
+                x: an.x + (Math.random() - 0.5) * spread,
+                y: an.y + (Math.random() - 0.5) * spread,
+                vx: 0, vy: 0,
+                anchor: an,
+                phase: Math.random() * Math.PI * 2,
+                floatAmp: 1.5 + Math.random() * 3,
+                floatSpeed: 0.4 + Math.random() * 0.8,
+                size: an.type === 'eyecore' ? 3.5 : an.type === 'eye' ? 1.8 :
+                      an.type === 'brow' ? 1.5 : an.type === 'ambient' ? 1.0 : 1.3,
+                brightness: an.type === 'eyecore' ? 1.0 : an.type === 'eye' ? 0.85 :
+                            an.type === 'mouth' ? 0.7 : an.type === 'ambient' ? 0.3 : 0.6,
+                isEye: an.type === 'eyecore' || an.type === 'eye',
+                isMouth: an.type === 'mouth',
+                isAmbient: an.type === 'ambient'
+            };
+        });
+        initialized = true;
+    }
+
+    var lastW = 0, lastH = 0;
 
     function draw() {
         requestAnimationFrame(draw);
@@ -376,167 +442,114 @@ async function fetchRemoteSummary() {
         if (!w || !h) return;
         if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, w, h);
 
-        var t = Date.now() / 1000, col = accent();
+        if (!initialized || w !== lastW || h !== lastH) { initParticles(w, h); lastW = w; lastH = h; }
+
+        // Fade trail
+        ctx.fillStyle = 'rgba(4,9,23,0.18)';
+        ctx.fillRect(0, 0, w, h);
+
+        var t = Date.now() / 1000;
         var now = Date.now();
         var speaking = now < speakUntil, thinking = now < thinkUntil;
-        var cx = w / 2, cy = h * 0.38, R = Math.min(w, h) * 0.28;
-        var speed = thinking ? 2.8 : 0.5;
+        var col = accent();
+        var cx = w / 2, cy = h * 0.40, R = Math.min(w, h) * 0.30;
 
-        // -- outer dashed orbit ring --
-        ctx.strokeStyle = col; ctx.lineWidth = 0.8;
-        ctx.setLineDash([4, 8]);
-        ctx.globalAlpha = 0.2;
-        ctx.beginPath(); ctx.arc(cx, cy, R * 1.85, 0, Math.PI * 2); ctx.stroke();
+        // Update + draw particles
+        particles.forEach(function(p, idx) {
+            p.phase += 0.012;
+            var floatX = Math.sin(p.phase * p.floatSpeed) * p.floatAmp;
+            var floatY = Math.cos(p.phase * p.floatSpeed * 0.7 + 1.2) * p.floatAmp;
+
+            // Mouth particles react when speaking
+            var mouthPulse = 0;
+            if (p.isMouth && speaking) {
+                mouthPulse = Math.sin(t * 12 + idx * 0.8) * R * 0.06;
+                floatY += mouthPulse;
+            }
+
+            // Thinking: swirl outward
+            if (thinking && p.isAmbient) {
+                var angle = Math.atan2(p.y - cy, p.x - cx) + 0.03;
+                var dist = Math.sqrt((p.x-cx)*(p.x-cx)+(p.y-cy)*(p.y-cy));
+                p.anchor = { x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, type: 'ambient' };
+            }
+
+            var tx = p.anchor.x + floatX;
+            var ty = p.anchor.y + floatY;
+            var pull = thinking ? 0.04 : 0.07;
+            p.vx += (tx - p.x) * pull;
+            p.vy += (ty - p.y) * pull;
+            p.vx *= 0.72; p.vy *= 0.72;
+            p.x += p.vx; p.y += p.vy;
+
+            var speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+            var pulse = p.isEye ? 0.85 + 0.15 * Math.sin(t * 3 + p.phase) : 1;
+            var alpha = p.brightness * pulse * (0.7 + Math.min(speed * 0.08, 0.3));
+
+            // Glow
+            if (p.size > 1.2) {
+                var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
+                g.addColorStop(0, col);
+                g.addColorStop(1, 'rgba(0,212,255,0)');
+                ctx.globalAlpha = alpha * 0.4;
+                ctx.fillStyle = g;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2); ctx.fill();
+            }
+
+            // Core dot
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.size > 3 ? '#ffffff' : col;
+            ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+        });
+
+        // Draw connection lines between nearby particles
+        ctx.strokeStyle = col; ctx.lineWidth = 0.5;
+        var maxDist = R * 0.28;
+        for (var i = 0; i < particles.length; i++) {
+            var pi = particles[i];
+            if (pi.isAmbient) continue;
+            for (var j = i + 1; j < particles.length; j++) {
+                var pj = particles[j];
+                if (pj.isAmbient) continue;
+                var dx = pi.x - pj.x, dy = pi.y - pj.y;
+                var d = Math.sqrt(dx*dx + dy*dy);
+                if (d < maxDist) {
+                    ctx.globalAlpha = (1 - d / maxDist) * 0.25;
+                    ctx.beginPath(); ctx.moveTo(pi.x, pi.y); ctx.lineTo(pj.x, pj.y); ctx.stroke();
+                }
+            }
+        }
+
+        // Spinning outer ring
+        ctx.globalAlpha = 0.3; ctx.lineWidth = 1;
+        var ringR = R * 1.55;
+        ctx.setLineDash([6, 10]);
+        ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
 
-        // -- spinning HUD arcs --
-        var arcDefs = [
-            { r: 1.55, span: 0.55, w: 1.5, a: 0.45 },
-            { r: 1.38, span: 0.30, w: 2,   a: 0.55 },
-            { r: 1.22, span: 0.70, w: 1,   a: 0.35 }
-        ];
-        arcDefs.forEach(function(d, i) {
-            var a0 = t * speed * (i % 2 ? -1 : 1) + i * 2.1;
-            ctx.globalAlpha = d.a;
-            ctx.lineWidth = d.w;
+        // Spinning arcs
+        [[1.35, 0.4, 1.5, 0.45], [1.18, 0.65, 1, 0.35]].forEach(function(d, i) {
+            var a0 = t * (thinking ? 2.2 : 0.6) * (i % 2 ? -1 : 1) + i * 1.8;
+            ctx.globalAlpha = d[3];
+            ctx.lineWidth = d[2];
             ctx.beginPath();
-            ctx.arc(cx, cy, R * d.r, a0, a0 + Math.PI * d.span);
+            ctx.arc(cx, cy, R * d[0], a0, a0 + Math.PI * d[1]);
             ctx.stroke();
         });
 
-        // -- tick marks on orbit --
-        ctx.globalAlpha = 0.3; ctx.lineWidth = 1;
-        for (var k = 0; k < 24; k++) {
-            var a = k * Math.PI / 12 + t * 0.08;
-            var isLong = k % 6 === 0;
+        // Tick marks
+        for (var k = 0; k < 20; k++) {
+            var a = k * Math.PI / 10 + t * 0.07;
+            ctx.globalAlpha = k % 5 === 0 ? 0.5 : 0.15;
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(cx + Math.cos(a) * R * (isLong ? 1.60 : 1.63), cy + Math.sin(a) * R * (isLong ? 1.60 : 1.63));
-            ctx.lineTo(cx + Math.cos(a) * R * (isLong ? 1.73 : 1.68), cy + Math.sin(a) * R * (isLong ? 1.73 : 1.68));
-            ctx.globalAlpha = isLong ? 0.5 : 0.2;
+            ctx.moveTo(cx + Math.cos(a) * ringR * 1.04, cy + Math.sin(a) * ringR * 1.04);
+            ctx.lineTo(cx + Math.cos(a) * ringR * (k % 5 === 0 ? 1.11 : 1.07), cy + Math.sin(a) * ringR * (k % 5 === 0 ? 1.11 : 1.07));
             ctx.stroke();
         }
 
-        // -- face oval --
-        ctx.globalAlpha = 0.12; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.ellipse(cx, cy, R * 0.72, R * 0.88, 0, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 0.06;
-        ctx.fillStyle = col;
-        ctx.fill();
-
-        // -- cheekbone lines --
-        ctx.globalAlpha = 0.2; ctx.lineWidth = 0.8;
-        [[-1, 0.38, 0.28], [1, 0.38, 0.28]].forEach(function(s) {
-            ctx.beginPath();
-            ctx.moveTo(cx + s[0] * R * 0.62, cy + R * s[1]);
-            ctx.lineTo(cx + s[0] * R * 0.38, cy + R * s[2]);
-            ctx.stroke();
-        });
-
-        // -- forehead bar --
-        ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(cx - R * 0.35, cy - R * 0.72);
-        ctx.lineTo(cx + R * 0.35, cy - R * 0.72);
-        ctx.stroke();
-        // centre diamond
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - R * 0.82);
-        ctx.lineTo(cx + R * 0.06, cy - R * 0.72);
-        ctx.lineTo(cx, cy - R * 0.62);
-        ctx.lineTo(cx - R * 0.06, cy - R * 0.72);
-        ctx.closePath();
-        ctx.fillStyle = col; ctx.fill();
-
-        // -- EYES --
-        if (now > nextBlink) { blinkT = now; nextBlink = now + 2500 + Math.random() * 4500; }
-        var blink = Math.max(0, 1 - Math.abs(now - blinkT - 80) / 80);
-        var openH = Math.max(0.05, 1 - blink);
-        [-1, 1].forEach(function(s) {
-            var ex = cx + s * R * 0.37, ey = cy - R * 0.18;
-            var ew = R * 0.22, eh = R * 0.11 * openH;
-
-            // eye socket
-            ctx.globalAlpha = 0.15; ctx.lineWidth = 1;
-            ctx.strokeStyle = col;
-            ctx.beginPath(); ctx.ellipse(ex, ey, ew * 1.2, eh * 1.8 + R * 0.04, 0, 0, Math.PI * 2); ctx.stroke();
-
-            // inner hex glow
-            ctx.globalAlpha = 0.6;
-            hexPath(ctx, ex, ey, ew * 0.55);
-            ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
-
-            // bright core
-            var g = ctx.createRadialGradient(ex, ey, 0, ex, ey, ew);
-            g.addColorStop(0, 'rgba(255,255,255,0.95)');
-            g.addColorStop(0.2, col);
-            g.addColorStop(1, 'rgba(0,212,255,0)');
-            ctx.globalAlpha = 0.9;
-            ctx.fillStyle = g;
-            ctx.beginPath(); ctx.ellipse(ex, ey, ew, eh, 0, 0, Math.PI * 2); ctx.fill();
-
-            // scan line through eye
-            if (openH > 0.3) {
-                ctx.globalAlpha = 0.3; ctx.lineWidth = 0.5;
-                ctx.beginPath();
-                ctx.moveTo(ex - ew * 1.1, ey);
-                ctx.lineTo(ex + ew * 1.1, ey);
-                ctx.stroke();
-            }
-        });
-
-        // -- nose bridge --
-        ctx.globalAlpha = 0.2; ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - R * 0.05);
-        ctx.lineTo(cx - R * 0.08, cy + R * 0.18);
-        ctx.lineTo(cx + R * 0.08, cy + R * 0.18);
-        ctx.stroke();
-
-        // -- MOUTH: voice bar visualizer --
-        var barsN = bars.length, bw = R * 1.1 / barsN * 0.72, gap = R * 1.1 / barsN;
-        var mx0 = cx - R * 0.55, my0 = cy + R * 0.52;
-        bars.forEach(function(b, i) {
-            var target = speaking
-                ? 0.15 + 0.85 * Math.abs(Math.sin(t * (7 + i * 0.6) + i * 0.9))
-                : 0.05 + 0.08 * Math.abs(Math.sin(t * 1.2 + i * 0.5));
-            bars[i] += (target - bars[i]) * 0.18;
-            var bh = bars[i] * R * 0.38;
-            var bx = mx0 + i * gap;
-            var alpha = 0.5 + bars[i] * 0.5;
-            // bar glow
-            var bg = ctx.createLinearGradient(bx, my0, bx, my0 - bh);
-            bg.addColorStop(0, 'rgba(0,212,255,0.1)');
-            bg.addColorStop(1, col);
-            ctx.globalAlpha = alpha * 0.85;
-            ctx.fillStyle = bg;
-            ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(bx - bw/2, my0 - bh, bw, bh, 2)
-                          : ctx.rect(bx - bw/2, my0 - bh, bw, bh);
-            ctx.fill();
-        });
-
-        // -- data readout lines (left side) --
-        ctx.globalAlpha = 0.18; ctx.lineWidth = 0.7; ctx.strokeStyle = col;
-        [0, 8, 16].forEach(function(off) {
-            var pw = R * (0.3 + Math.sin(t * 0.4 + off) * 0.12);
-            ctx.beginPath();
-            ctx.moveTo(cx - R * 1.55, cy - R * 0.1 + off);
-            ctx.lineTo(cx - R * 1.55 + pw, cy - R * 0.1 + off);
-            ctx.stroke();
-        });
-        [0, 8, 16].forEach(function(off) {
-            var pw = R * (0.25 + Math.sin(t * 0.5 + off + 1) * 0.1);
-            ctx.beginPath();
-            ctx.moveTo(cx + R * 1.55, cy - R * 0.1 + off);
-            ctx.lineTo(cx + R * 1.55 - pw, cy - R * 0.1 + off);
-            ctx.stroke();
-        });
-
         ctx.globalAlpha = 1;
-        ctx.strokeStyle = col;
     }
     draw();
 })();
