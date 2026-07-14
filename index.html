@@ -232,6 +232,21 @@ if (!CFG && 'caches' in window && !sessionStorage.getItem('jarvis_cfg_tried')) {
         });
     }).catch(function () {});
 }
+// Auto-configure silently when on home WiFi — fetches fresh config from Mac
+// every time the app opens at home, so setup never needs to be repeated.
+(function autoConfigFromMac() {
+    var MAC = 'http://192.168.1.236:8790';
+    fetch(MAC + '/api/cfg', { signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+            if (!d || !d.gh || !d.user) return;
+            var raw = JSON.stringify(d);
+            localStorage.setItem('jarvis_cfg', raw);
+            backupCfg(raw);
+            if (!CFG) location.reload(); // first time — reload so app boots with config
+        })
+        .catch(function() {}); // silently fail when not on home WiFi
+})();
 
 // ---------------- phone push alerts (iOS home-screen app) ----------------
 var PUSH_VAPID_PUBLIC = "BKgekxmu2q8Y4LR8BEDHkFvCP3q9yaCY11-od1fv4cJjU1aFFJM3rivkDQJDFLhGBSm2a4_zMPJ3zxzDoZIYIuA";
