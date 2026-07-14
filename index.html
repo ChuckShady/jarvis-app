@@ -60,7 +60,7 @@ body {
 .page.active { display: flex; }
 #pages { flex: 1; position: relative; min-height: 0; }
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px; }
-#faceCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .55; z-index: 0; }
+#faceCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: .92; z-index: 0; }
 #chatLog, #chatBar { position: relative; z-index: 1; }
 #chatLog { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px 6px; }
 .msg { max-width: 86%; padding: 9px 12px; border-radius: 12px; margin-bottom: 8px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
@@ -354,83 +354,24 @@ async function fetchRemoteSummary() {
         think: function () { thinkUntil = Date.now() + 120000; },
         calm: function () { thinkUntil = 0; }
     };
-    // ---- face silhouette ----
-    function inFace(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        return (nx*nx + ny*ny < 1.0) ||
-               (nx*nx/1.12 + (ny-0.08)*(ny-0.08)/0.96 < 1.0) ||
-               (nx*nx/0.88 + (ny-0.52)*(ny-0.52)/0.28 < 1.0) ||
-               (Math.abs(nx) < 0.20 && ny > 0.70 && ny < 1.08) ||
-               (nx < -0.15 && ny > 0.82 && ny < 1.28 && (nx+0.85)*(nx+0.85)/0.55+(ny-1.0)*(ny-1.0)/0.18 < 1) ||
-               (nx >  0.15 && ny > 0.82 && ny < 1.28 && (nx-0.85)*(nx-0.85)/0.55+(ny-1.0)*(ny-1.0)/0.18 < 1);
-    }
-    function eyeRegion(x, y, fcx, fcy, fw, fh) {
-        var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-        return ((nx+0.30)*(nx+0.30)/0.030 + (ny+0.18)*(ny+0.18)/0.013 < 1) ||
-               ((nx-0.30)*(nx-0.30)/0.030 + (ny+0.18)*(ny+0.18)/0.013 < 1);
-    }
+    var rings = [], lastW = 0, lastH = 0, initialized = false;
 
-    var cubes = [], rain = [];
-    var lastW = 0, lastH = 0, initialized = false;
-    // pulse state
-    var pulseR = 0, pulseActive = false, pulseTimer = 0;
-
-    function buildCubes(w, h) {
-        cubes = [];
-        var STEP = Math.max(7, Math.round(w / 46));
-        var fcx = w*0.5, fcy = h*0.42, fw = w*0.34, fh = h*0.44;
-        for (var y = 8; y < h*0.96; y += STEP) {
-            for (var x = 8; x < w-4; x += STEP) {
-                if (!inFace(x, y, fcx, fcy, fw, fh)) continue;
-                var nx = (x-fcx)/fw, ny = (y-fcy)/fh;
-                var dist  = Math.sqrt(nx*nx + ny*ny);
-                var depth = Math.max(0.1, 1.0 - dist*0.55);
-                var eb    = eyeRegion(x, y, fcx, fcy, fw, fh) ? 1.0 : 0.0;
-                var rBias = (x - w*0.5) / (w*0.5);
-                var dChance = 0.10 + Math.max(0, rBias)*0.62 + Math.max(0, -ny)*0.15;
-                var disp  = Math.random() < dChance;
-                cubes.push({
-                    tx: x, ty: y, x: x+(Math.random()-0.5)*120, y: y+(Math.random()-0.5)*120,
-                    vx: 0, vy: 0, depth: depth, eb: eb, disp: disp,
-                    dAngle: Math.random()*Math.PI*2, dDist: 55+Math.random()*190,
-                    phase: Math.random()*Math.PI*2, fSpd: 0.35+Math.random()*0.55,
-                    t: Math.random()*80, size: STEP*0.80, cShift: Math.random()*25,
-                    distToCenter: dist
-                });
+    function buildRings(cx, cy, R) {
+        rings = [
+            { tilt: 0.40,  speed:  0.38, r: R*1.44 },
+            { tilt: -0.62, speed: -0.24, r: R*1.68 },
+            { tilt: 1.10,  speed:  0.15, r: R*1.92 }
+        ].map(function(ring) {
+            var n = Math.round(18 + Math.random()*10);
+            ring.pts = [];
+            for (var i = 0; i < n; i++) {
+                ring.pts.push({ a: (i/n)*Math.PI*2 + Math.random()*0.25,
+                                size: 0.9 + Math.random()*2.4,
+                                bright: 0.40 + Math.random()*0.60 });
             }
-        }
-        cubes.sort(function(a,b){ return a.depth - b.depth; });
-        // rain drops
-        rain = [];
-        for (var i = 0; i < 28; i++) {
-            rain.push({ x: Math.random()*w, y: Math.random()*h,
-                        spd: 60+Math.random()*120, len: 8+Math.random()*28,
-                        bright: 0.12+Math.random()*0.28 });
-        }
+            return ring;
+        });
         initialized = true;
-    }
-
-    function drawCube(x, y, s, depth, eb, alpha, cs, scanBoost, pulseBoost) {
-        var side = s*0.36, d = depth, e = eb;
-        var boost = scanBoost + pulseBoost + e*0.55;
-        var r = Math.min(255, Math.floor(12  + d*30  + boost*90  + cs*0.3));
-        var g = Math.min(255, Math.floor(50  + d*100 + boost*110 + cs*0.15));
-        var b = Math.min(255, Math.floor(130 + d*100 + boost*60));
-        var a = Math.min(1, alpha + boost*0.4);
-        ctx.globalAlpha = a;
-        ctx.fillStyle = 'rgb('+r+','+g+','+b+')';
-        ctx.fillRect(x-s/2, y-s/2, s, s);
-        ctx.fillStyle = 'rgba('+Math.min(255,r+35)+','+Math.min(255,g+55)+','+Math.min(255,b+35)+','+(a*0.75)+')';
-        ctx.beginPath(); ctx.moveTo(x-s/2,y-s/2); ctx.lineTo(x-s/2+side,y-s/2-side*0.52);
-        ctx.lineTo(x+s/2+side,y-s/2-side*0.52); ctx.lineTo(x+s/2,y-s/2); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba('+Math.max(0,r-25)+','+Math.max(0,g-38)+','+Math.max(0,b-18)+','+(a*0.88)+')';
-        ctx.beginPath(); ctx.moveTo(x+s/2,y-s/2); ctx.lineTo(x+s/2+side,y-s/2-side*0.52);
-        ctx.lineTo(x+s/2+side,y+s/2-side*0.52); ctx.lineTo(x+s/2,y+s/2); ctx.closePath(); ctx.fill();
-        if (s > 7) {
-            ctx.globalAlpha = a*0.22;
-            ctx.strokeStyle = 'rgba('+Math.min(255,r+70)+','+Math.min(255,g+90)+',255,1)';
-            ctx.lineWidth = 0.4; ctx.strokeRect(x-s/2, y-s/2, s, s);
-        }
     }
 
     function draw() {
@@ -441,137 +382,203 @@ async function fetchRemoteSummary() {
         var pw = Math.round(w*dpr), ph = Math.round(h*dpr);
         if (cv.width !== pw) { cv.width = pw; cv.height = ph; }
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (!initialized || w !== lastW || h !== lastH) { buildCubes(w, h); lastW = w; lastH = h; }
 
-        var t = Date.now()/1000, dt = 0.016;
+        var cx = w/2, cy = h*0.40, R = Math.min(w,h)*0.28;
+        if (!initialized || w !== lastW || h !== lastH) { buildRings(cx, cy, R); lastW = w; lastH = h; }
+
+        var t = Date.now()/1000;
         var now = Date.now();
         var speaking = now < speakUntil, thinking = now < thinkUntil;
-        var fcx = w*0.5, fcy = h*0.42, fw = w*0.34, fh = h*0.44;
-        var maxFaceR = Math.min(w,h)*0.46;
+        var breath = 1 + Math.sin(t*0.72)*0.013;
+        var sc = breath; // scale shorthand
 
-        // pulse trigger every ~5s
-        pulseTimer += dt;
-        if (pulseTimer > 5.0) { pulseTimer = 0; pulseActive = true; pulseR = 0; }
-        if (pulseActive) {
-            pulseR += dt * maxFaceR * 1.1;
-            if (pulseR > maxFaceR * 1.6) pulseActive = false;
-        }
-
-        // glitch: random brief band shift
-        var glitching = Math.sin(t*11.3)*Math.sin(t*7.7) > 0.94;
-        var glitchY  = fcy - fh*0.3 + Math.random()*fh*0.9;
-        var glitchH  = 6 + Math.random()*18;
-        var glitchOX = glitching ? (Math.random()-0.5)*28 : 0;
-
-        // scan beam Y (sweeps top→bottom of face every ~3s)
-        var scanY = fcy - fh + ((t % 3.0) / 3.0) * fh * 2.2;
-
-        // breathing scale
-        var breath = 1.0 + Math.sin(t*0.75)*0.011;
-
-        // --- clear ---
+        // Clear
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#0a0e17';
         ctx.fillRect(0, 0, w, h);
 
-        // --- matrix rain ---
-        rain.forEach(function(r) {
-            r.y += r.spd * dt;
-            if (r.y > h + r.len) r.y = -r.len;
-            var rg = ctx.createLinearGradient(r.x, r.y-r.len, r.x, r.y);
-            rg.addColorStop(0, 'rgba(0,212,255,0)');
-            rg.addColorStop(1, 'rgba(0,212,255,'+r.bright+')');
-            ctx.globalAlpha = 1; ctx.strokeStyle = rg; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(r.x, r.y-r.len); ctx.lineTo(r.x, r.y); ctx.stroke();
+        // --- 3D orbital rings ---
+        rings.forEach(function(ring) {
+            ring.pts.forEach(function(p) {
+                p.a += ring.speed * 0.016;
+                var x3 = Math.cos(p.a) * ring.r * sc;
+                var z3 = Math.sin(p.a) * ring.r * sc;
+                var y3 = z3 * Math.sin(ring.tilt) * 0.55;
+                var px = cx + x3, py = cy + y3;
+                var depth = (Math.sin(p.a) * Math.sin(ring.tilt) + 1) / 2;
+                if (depth < 0.12) return;
+                var sz = p.size * (0.35 + depth*0.75);
+                var br = p.bright * (0.28 + depth*0.72);
+                var gg = ctx.createRadialGradient(px, py, 0, px, py, sz*5.5);
+                gg.addColorStop(0, 'rgba(0,212,255,'+(br*0.55)+')');
+                gg.addColorStop(1, 'rgba(0,212,255,0)');
+                ctx.globalAlpha = 1; ctx.fillStyle = gg;
+                ctx.beginPath(); ctx.arc(px, py, sz*5.5, 0, Math.PI*2); ctx.fill();
+                ctx.globalAlpha = br;
+                ctx.fillStyle = depth > 0.72 ? '#ccf0ff' : '#00d4ff';
+                ctx.beginPath(); ctx.arc(px, py, sz, 0, Math.PI*2); ctx.fill();
+            });
         });
 
-        // --- cubes ---
-        cubes.forEach(function(p) {
-            p.t += 0.018;
-            var floatX = Math.sin(p.t*p.fSpd + p.phase)*2.2;
-            var floatY = Math.cos(p.t*p.fSpd*0.75 + p.phase+1)*1.6;
+        // --- Face ambient glow ---
+        var fg = ctx.createRadialGradient(cx, cy-R*0.05, R*0.22, cx, cy, R*1.15*sc);
+        fg.addColorStop(0, 'rgba(0,212,255,0.09)');
+        fg.addColorStop(0.5, 'rgba(0,212,255,0.03)');
+        fg.addColorStop(1, 'rgba(0,212,255,0)');
+        ctx.globalAlpha = 1; ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.ellipse(cx, cy, R*1.1*sc, R*1.3*sc, 0, 0, Math.PI*2); ctx.fill();
 
-            if (speaking) {
-                var ny = (p.ty - fcy)/fh;
-                if (ny > 0.36 && ny < 0.68) floatY += Math.sin(t*15 + p.phase*2)*4.5;
-            }
+        // --- Head outline (glowing) ---
+        ctx.save();
+        ctx.shadowBlur = 20; ctx.shadowColor = '#00d4ff';
+        ctx.globalAlpha = 0.78; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(cx, cy-R*0.03*sc, R*0.62*sc, R*0.84*sc, 0, 0, Math.PI*2); ctx.stroke();
+        ctx.restore();
 
-            var dWave = (Math.sin(p.t*0.28 + p.phase*0.55)+1)/2;
-            // apply breath scale to target position
-            var tx = fcx + (p.tx - fcx)*breath + floatX;
-            var ty = fcy + (p.ty - fcy)*breath + floatY;
-            var alpha = 0.60 + p.depth*0.40;
-
-            if (p.disp) {
-                tx += Math.cos(p.dAngle)*p.dDist*dWave;
-                ty += Math.sin(p.dAngle)*p.dDist*dWave;
-                alpha *= (1 - dWave*0.65);
-            }
-
-            // glitch band offset
-            if (glitching && p.ty > glitchY && p.ty < glitchY+glitchH) {
-                tx += glitchOX;
-                alpha = Math.min(1, alpha * 1.6);
-            }
-
-            // pulse shockwave — push cubes at wavefront
-            if (pulseActive) {
-                var pdx = p.tx - fcx, pdy = p.ty - fcy;
-                var pd  = Math.sqrt(pdx*pdx + pdy*pdy);
-                var wave = 1 - Math.min(1, Math.abs(pd - pulseR) / (maxFaceR*0.12));
-                if (wave > 0) { tx += (pdx/Math.max(1,pd))*wave*22; ty += (pdy/Math.max(1,pd))*wave*22; }
-            }
-
-            var pull = thinking ? 0.036 : 0.072;
-            p.vx += (tx-p.x)*pull; p.vy += (ty-p.y)*pull;
-            p.vx *= 0.74; p.vy *= 0.74;
-            p.x += p.vx; p.y += p.vy;
-
-            // scan beam proximity boost
-            var scanBoost = Math.max(0, 1 - Math.abs(p.y - scanY)/16) * 0.75;
-            // pulse wave glow boost
-            var pulseBoost = 0;
-            if (pulseActive) {
-                var pdx2 = p.x - fcx, pdy2 = p.y - fcy;
-                var pd2 = Math.sqrt(pdx2*pdx2+pdy2*pdy2);
-                pulseBoost = Math.max(0, 1 - Math.abs(pd2-pulseR)/(maxFaceR*0.14)) * 0.6;
-            }
-
-            drawCube(p.x, p.y, p.size, p.depth, p.eb, Math.max(0.05, alpha), p.cShift, scanBoost, pulseBoost);
+        // --- Eyebrows ---
+        ctx.save();
+        ctx.shadowBlur = 10; ctx.shadowColor = '#00d4ff';
+        ctx.globalAlpha = 0.92; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2.2;
+        [-1,1].forEach(function(s) {
+            ctx.beginPath();
+            ctx.moveTo(cx + s*R*0.54*sc, cy - R*0.40*sc);
+            ctx.lineTo(cx + s*R*0.18*sc, cy - R*0.53*sc);
+            ctx.stroke();
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(cx + s*R*0.54*sc, cy - R*0.40*sc);
+            ctx.lineTo(cx + s*R*0.58*sc, cy - R*0.29*sc);
+            ctx.stroke();
+            ctx.lineWidth = 2.2;
         });
+        ctx.restore();
 
-        // --- scan beam glow overlay ---
-        if (scanY > fcy - fh && scanY < fcy + fh) {
-            ctx.globalAlpha = 0.12;
-            var sg = ctx.createLinearGradient(fcx-fw, scanY, fcx+fw, scanY);
-            sg.addColorStop(0,'rgba(0,212,255,0)'); sg.addColorStop(0.5,'rgba(0,212,255,1)'); sg.addColorStop(1,'rgba(0,212,255,0)');
-            ctx.fillStyle = sg; ctx.fillRect(fcx-fw, scanY-2, fw*2, 4);
-        }
+        // --- Eyes ---
+        var eyePulse = 0.72 + 0.28*Math.sin(t*2.6);
+        var eyeBlink = Math.sin(t*0.59) > 0.96 ? 1-(Math.sin(t*0.59)-0.96)/0.04 : 1;
+        var eyeScan  = thinking ? Math.sin(t*1.9)*R*0.06 : 0;
 
-        // --- eye glow overlays ---
-        var eyePulse = 0.18 + 0.10*Math.sin(t*2.8);
-        [fcx - fw*0.30, fcx + fw*0.30].forEach(function(ex) {
-            var ey = fcy - fh*0.18, er = fw*0.13;
-            var eg = ctx.createRadialGradient(ex, ey, 0, ex, ey, er*2.2);
-            eg.addColorStop(0, 'rgba(180,240,255,'+eyePulse+')');
-            eg.addColorStop(0.4, 'rgba(0,212,255,'+(eyePulse*0.5)+')');
+        [-1,1].forEach(function(s) {
+            var ex = cx + s*R*0.31*sc + eyeScan*s;
+            var ey = cy - R*0.21*sc;
+            var ew = R*0.21*sc, eh = R*0.088*sc*eyeBlink;
+
+            // Eye glow
+            var eg = ctx.createRadialGradient(ex, ey, 0, ex, ey, ew*2.6);
+            eg.addColorStop(0, 'rgba(0,212,255,'+(0.50*eyePulse)+')');
+            eg.addColorStop(0.4, 'rgba(0,212,255,'+(0.18*eyePulse)+')');
             eg.addColorStop(1, 'rgba(0,212,255,0)');
             ctx.globalAlpha = 1; ctx.fillStyle = eg;
-            ctx.beginPath(); ctx.arc(ex, ey, er*2.2, 0, Math.PI*2); ctx.fill();
+            ctx.fillRect(ex-ew*2.7, ey-eh*3.5, ew*5.4, eh*7);
+
+            // Angular visor eye shape
+            ctx.save();
+            ctx.shadowBlur = 16; ctx.shadowColor = '#00d4ff';
+            ctx.globalAlpha = eyePulse;
+            ctx.fillStyle = 'rgba(0,180,240,0.14)';
+            ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(ex-ew, ey);
+            ctx.lineTo(ex-ew*0.42, ey-eh);
+            ctx.lineTo(ex+ew*0.42, ey-eh);
+            ctx.lineTo(ex+ew, ey);
+            ctx.lineTo(ex+ew*0.42, ey+eh);
+            ctx.lineTo(ex-ew*0.42, ey+eh);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+
+            // Hot white core
+            var ec = ctx.createRadialGradient(ex, ey, 0, ex, ey, ew*0.5);
+            ec.addColorStop(0, 'rgba(255,255,255,'+(0.95*eyePulse)+')');
+            ec.addColorStop(0.3, 'rgba(100,230,255,'+(0.70*eyePulse)+')');
+            ec.addColorStop(1, 'rgba(0,212,255,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = ec;
+            ctx.beginPath(); ctx.ellipse(ex, ey, ew*0.5, eh*0.5, 0, 0, Math.PI*2); ctx.fill();
+
+            // Corner tick marks
+            ctx.globalAlpha = 0.55; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(ex-ew, ey); ctx.lineTo(ex-ew-R*0.065, ey-R*0.022);
+            ctx.moveTo(ex+ew, ey); ctx.lineTo(ex+ew+R*0.065, ey-R*0.022);
+            ctx.stroke();
         });
 
-        // --- pulse ring ---
-        if (pulseActive && pulseR < maxFaceR*1.6) {
-            var pa = Math.max(0, 0.5 - pulseR/(maxFaceR*1.6));
-            ctx.globalAlpha = pa;
-            ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(fcx, fcy, pulseR, 0, Math.PI*2); ctx.stroke();
+        // --- Nose bridge ---
+        ctx.globalAlpha = 0.35; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx-R*0.055*sc, cy-R*0.04*sc); ctx.lineTo(cx-R*0.10*sc, cy+R*0.20*sc); ctx.lineTo(cx-R*0.155*sc, cy+R*0.26*sc);
+        ctx.moveTo(cx+R*0.055*sc, cy-R*0.04*sc); ctx.lineTo(cx+R*0.10*sc, cy+R*0.20*sc); ctx.lineTo(cx+R*0.155*sc, cy+R*0.26*sc);
+        ctx.stroke();
+
+        // --- Mouth voice bars ---
+        var mouthY = cy + R*0.50*sc, mouthW = R*0.46*sc;
+        var bars = 9, bw = (mouthW*2)/(bars*1.35);
+        for (var i = 0; i < bars; i++) {
+            var bx = cx - mouthW + (i/(bars-1))*mouthW*2;
+            var bh = speaking
+                ? R*0.018*sc + Math.abs(Math.sin(t*16+i*1.2))*R*0.092*sc
+                : R*0.016*sc + Math.abs(Math.sin(t*1.6+i*0.75))*R*0.012*sc;
+            var bg = ctx.createLinearGradient(bx, mouthY-bh, bx, mouthY+bh);
+            bg.addColorStop(0, 'rgba(0,212,255,0.18)');
+            bg.addColorStop(0.5, '#00d4ff');
+            bg.addColorStop(1, 'rgba(0,212,255,0.18)');
+            ctx.globalAlpha = 0.92; ctx.fillStyle = bg;
+            ctx.fillRect(bx-bw/2, mouthY-bh, bw, bh*2);
+        }
+        ctx.globalAlpha = 0.28; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(cx-mouthW-R*0.06, mouthY); ctx.lineTo(cx+mouthW+R*0.06, mouthY); ctx.stroke();
+
+        // --- Cheekbones & temple circuits ---
+        ctx.globalAlpha = 0.28; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 1;
+        [-1,1].forEach(function(s) {
+            // cheekbone
+            ctx.beginPath();
+            ctx.moveTo(cx+s*R*0.44*sc, cy+R*0.09*sc);
+            ctx.lineTo(cx+s*R*0.60*sc, cy+R*0.25*sc);
+            ctx.stroke();
+            // temple circuit
+            ctx.globalAlpha = 0.20; ctx.lineWidth = 0.8;
+            var tx = cx+s*R*0.54*sc, ty = cy-R*0.12*sc;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty); ctx.lineTo(tx+s*R*0.17, ty); ctx.lineTo(tx+s*R*0.17, ty+R*0.11); ctx.lineTo(tx+s*R*0.28, ty+R*0.11);
+            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(tx, ty+R*0.23); ctx.lineTo(tx+s*R*0.21, ty+R*0.23); ctx.stroke();
+            ctx.globalAlpha = 0.28; ctx.lineWidth = 1;
+        });
+
+        // --- Scan beam ---
+        var scanY = cy - R*0.84*sc + ((t%3.2)/3.2)*R*1.68*sc*2;
+        if (scanY > cy-R*0.84*sc && scanY < cy+R*0.84*sc) {
+            var sg = ctx.createLinearGradient(cx-R*0.68, scanY, cx+R*0.68, scanY);
+            sg.addColorStop(0,'rgba(0,212,255,0)'); sg.addColorStop(0.5,'rgba(0,212,255,0.30)'); sg.addColorStop(1,'rgba(0,212,255,0)');
+            ctx.globalAlpha = 1; ctx.fillStyle = sg; ctx.fillRect(cx-R*0.68, scanY-1.5, R*1.36, 3);
         }
 
-        // --- vignette ---
+        // --- HUD ring with ticks ---
+        var ringR = R*1.25*sc;
+        ctx.globalAlpha = 0.22; ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 0.9;
+        ctx.setLineDash([5,9]);
+        ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        for (var k = 0; k < 24; k++) {
+            var a = k*Math.PI/12 + t*0.05;
+            ctx.globalAlpha = k%6===0 ? 0.50 : 0.14; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(cx+Math.cos(a)*ringR*1.02, cy+Math.sin(a)*ringR*1.02);
+            ctx.lineTo(cx+Math.cos(a)*ringR*(k%6===0?1.11:1.06), cy+Math.sin(a)*ringR*(k%6===0?1.11:1.06));
+            ctx.stroke();
+        }
+        // Counter-rotating inner arc
+        ctx.globalAlpha = 0.15; ctx.lineWidth = 0.7;
+        ctx.setLineDash([3,14]);
+        ctx.beginPath(); ctx.arc(cx, cy, ringR*0.80, -t*0.14, -t*0.14+Math.PI*1.5); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Vignette
         ctx.globalAlpha = 1;
-        var vg = ctx.createRadialGradient(w/2, h*0.42, h*0.12, w/2, h*0.42, h*0.84);
-        vg.addColorStop(0,'rgba(10,14,23,0)'); vg.addColorStop(1,'rgba(10,14,23,0.78)');
+        var vg = ctx.createRadialGradient(w/2, h*0.42, h*0.12, w/2, h*0.42, h*0.86);
+        vg.addColorStop(0,'rgba(10,14,23,0)'); vg.addColorStop(1,'rgba(10,14,23,0.82)');
         ctx.fillStyle = vg; ctx.fillRect(0,0,w,h);
     }
     draw();
