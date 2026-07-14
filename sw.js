@@ -1,6 +1,6 @@
 // JARVIS away-mode service worker: keeps the app shell stored on the phone
 // so it opens instantly anywhere, with or without the Mac or even internet.
-const CACHE = 'jarvis-away-v7';
+const CACHE = 'jarvis-away-v8';
 const SHELL = ['./', './index.html', './icon.png', './manifest.json'];
 
 self.addEventListener('install', (e) => {
