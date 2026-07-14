@@ -189,19 +189,49 @@ canvas { width: 100%; height: 90px; }
 </div>
 
 <script>
-// ---------------- one-tap setup via URL fragment ----------------
+// ---------------- one-tap setup + resilient config store ----------------
+// Config (GitHub token, Groq key, sync key) arrives once via the #setup link.
+// We keep it in localStorage AND mirror it into the Cache API, which survives
+// far better on an installed iOS app. If localStorage ever gets wiped, we
+// self-heal from the Cache copy so the user NEVER has to re-run setup or
+// re-add the app to the home screen.
+var CFG_CACHE = 'jarvis-cfg-v1';
+var CFG_URL = './__jarvis_cfg__';
+function backupCfg(jsonStr) {
+    try {
+        if (!('caches' in window)) return;
+        caches.open(CFG_CACHE).then(function (c) {
+            c.put(CFG_URL, new Response(jsonStr, { headers: { 'Content-Type': 'application/json' } }));
+        });
+    } catch (e) {}
+}
 (function () {
     if (location.hash.indexOf('#setup=') === 0) {
         try {
-            var blob = JSON.parse(atob(decodeURIComponent(location.hash.slice(7))));
+            var raw = atob(decodeURIComponent(location.hash.slice(7)));
+            var blob = JSON.parse(raw);
             if (blob && blob.gh && blob.user) {
-                localStorage.setItem('jarvis_cfg', JSON.stringify(blob));
+                localStorage.setItem('jarvis_cfg', raw);
+                backupCfg(raw);
             }
         } catch (e) {}
         try { history.replaceState(null, '', location.pathname); } catch (e) {}
     }
 })();
 var CFG = JSON.parse(localStorage.getItem('jarvis_cfg') || 'null');
+if (CFG) { backupCfg(JSON.stringify(CFG)); }
+// Self-heal: if config is missing but we have a Cache backup, restore it and
+// reload once so the whole app comes up properly configured.
+if (!CFG && 'caches' in window && !sessionStorage.getItem('jarvis_cfg_tried')) {
+    sessionStorage.setItem('jarvis_cfg_tried', '1');
+    caches.open(CFG_CACHE).then(function (c) {
+        return c.match(CFG_URL);
+    }).then(function (resp) {
+        if (resp) return resp.text().then(function (t) {
+            if (t && t.indexOf('"gh"') !== -1) { localStorage.setItem('jarvis_cfg', t); location.reload(); }
+        });
+    }).catch(function () {});
+}
 
 // ---------------- phone push alerts (iOS home-screen app) ----------------
 var PUSH_VAPID_PUBLIC = "BKgekxmu2q8Y4LR8BEDHkFvCP3q9yaCY11-od1fv4cJjU1aFFJM3rivkDQJDFLhGBSm2a4_zMPJ3zxzDoZIYIuA";
