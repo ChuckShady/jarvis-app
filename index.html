@@ -344,7 +344,7 @@ async function fetchRemoteSummary() {
     return JSON.parse(new TextDecoder().decode(pt));
 }
 
-// ---------------- JARVIS face (v13 — gaussian feature zones) ----------------
+// ---------------- JARVIS face (v14 — oval eyes) ----------------
 (function () {
     var cv = document.getElementById('faceCanvas');
     var ctx = cv.getContext('2d');
@@ -517,27 +517,40 @@ async function fetchRemoteSummary() {
         ctx.globalAlpha=0.85; ctx.strokeStyle='rgba(200,250,255,0.9)'; ctx.lineWidth=1.2;
         ctx.beginPath(); ctx.moveTo(fcx-fw*1.08,scanY); ctx.lineTo(fcx+fw*1.08,scanY); ctx.stroke();
 
-        // Eye glows — soft radial only, no backdrop, no outlines
+        // Eye glows — horizontal ovals, no backdrop
         [-1,1].forEach(function(s) {
             var ex=fcx+s*fw*0.30, ey=fcy-fh*0.220;
+            var ew=fw*0.195, eh=fh*0.038;
             var ep=0.55+0.45*Math.sin(t*2.6+s);
+            // Outer ambient haze — circle, like an eye socket glow
             var g1=ctx.createRadialGradient(ex,ey,0,ex,ey,fw*0.40);
-            g1.addColorStop(0,'rgba(0,170,255,'+(0.28*ep)+')');
+            g1.addColorStop(0,'rgba(0,150,255,'+(0.22*ep)+')');
             g1.addColorStop(1,'rgba(0,80,200,0)');
             ctx.globalAlpha=1; ctx.fillStyle=g1;
             ctx.beginPath(); ctx.arc(ex,ey,fw*0.40,0,Math.PI*2); ctx.fill();
-            var g2=ctx.createRadialGradient(ex,ey,0,ex,ey,fw*0.17);
-            g2.addColorStop(0,'rgba(80,225,255,'+(0.90*ep)+')');
-            g2.addColorStop(0.5,'rgba(0,160,255,'+(0.60*ep)+')');
+            // Iris — oval gradient clipped to ellipse
+            ctx.save();
+            ctx.beginPath(); ctx.ellipse(ex,ey,ew,eh,0,0,Math.PI*2); ctx.clip();
+            var g2=ctx.createRadialGradient(ex,ey,0,ex,ey,ew);
+            g2.addColorStop(0,'rgba(80,225,255,'+(0.92*ep)+')');
+            g2.addColorStop(0.5,'rgba(0,160,255,'+(0.62*ep)+')');
             g2.addColorStop(1,'rgba(0,100,220,0)');
             ctx.globalAlpha=1; ctx.fillStyle=g2;
-            ctx.beginPath(); ctx.arc(ex,ey,fw*0.17,0,Math.PI*2); ctx.fill();
-            var g3=ctx.createRadialGradient(ex,ey,0,ex,ey,fw*0.065);
+            ctx.fillRect(ex-ew,ey-eh,ew*2,eh*2);
+            ctx.restore();
+            // Oval outline
+            ctx.globalAlpha=ep*0.88; ctx.strokeStyle='rgba(0,222,255,0.95)'; ctx.lineWidth=1.5;
+            ctx.beginPath(); ctx.ellipse(ex,ey,ew,eh,0,0,Math.PI*2); ctx.stroke();
+            // Pupil — smaller oval, white core
+            ctx.save();
+            ctx.beginPath(); ctx.ellipse(ex,ey,ew*0.44,eh*0.60,0,0,Math.PI*2); ctx.clip();
+            var g3=ctx.createRadialGradient(ex,ey,0,ex,ey,ew*0.44);
             g3.addColorStop(0,'rgba(255,255,255,'+(0.98*ep)+')');
             g3.addColorStop(0.45,'rgba(160,245,255,'+(0.72*ep)+')');
             g3.addColorStop(1,'rgba(0,200,255,0)');
             ctx.globalAlpha=1; ctx.fillStyle=g3;
-            ctx.beginPath(); ctx.arc(ex,ey,fw*0.065,0,Math.PI*2); ctx.fill();
+            ctx.fillRect(ex-ew*0.44,ey-eh*0.60,ew*0.88,eh*1.20);
+            ctx.restore();
         });
 
         // Eyebrow arcs
